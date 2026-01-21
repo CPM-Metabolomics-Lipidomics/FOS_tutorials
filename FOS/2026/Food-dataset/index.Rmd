@@ -1,0 +1,643 @@
+---
+title: "Multivariate Data Analysis: Food data set"
+subtitle: "Principal Component Analysis with R"
+author: "Rico Derks, Aswin Verhoeven"
+output: 
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(factoextra)
+library(FactoMineR)
+library(knitr)
+library(DT)
+library(tidyr)
+
+# Set up tutorial options
+tutorial_options(exercise.timelimit = 60)
+
+# load the data
+food_data <- read.csv(
+  file = "./foods.csv",
+  header = TRUE
+)
+
+# Store variable names for easy reference
+food_vars <- names(food_data)[5:ncol(food_data)]
+n_vars <- length(food_vars)
+```
+
+## Background
+
+Data were collected to investigate the consumption pattern of a number of provisions in different European countries. The purpose of the investigation was to examine similarities and differences between the countries and the possible explanations.
+
+### Objective
+
+In this tutorial you will:
+
+- Explain why there are groupings in multivariate plots
+- Identify data characteristics that differentiate Portugal and Spain from Sweden and Denmark
+- Understand geographic and cultural patterns in food consumption across Europe
+- Practice interpreting PCA results with real-world data
+
+### The Data
+
+The dataset consists of **20 variables** (different foods) and **16 observations** (European countries). The values are the percentages of households in each country where a particular product was found.
+
+Let's explore the data structure:
+
+```{r explore-data, exercise=TRUE}
+# Display the first few rows
+head(food_data, 10)
+
+# Get summary statistics for the food variables
+summary(food_data[, food_vars])
+```
+
+```{r explore-data-solution}
+head(food_data, 10)
+summary(food_data[, food_vars])
+```
+
+### Data Exploration
+
+```{r data-structure, exercise=TRUE}
+# Check the structure
+str(food_data)
+
+# Count countries by geographic location
+table(food_data$Geographic.Location)
+
+# Geographic locations:
+# C = Central, S = Southern, N = Northern, W = Western
+```
+
+<div id="data-structure-hint">
+**Hint:** The Geographic.Location variable groups countries: N = Northern Europe, S = Southern Europe, C = Central Europe, W = Western.
+</div>
+
+### Interactive Data Table
+
+```{r data-table, exercise=TRUE}
+# Create an interactive table to explore the data
+library(DT)
+
+datatable(food_data, 
+          options = list(pageLength = 10, scrollX = TRUE),
+          caption = "European Food Consumption Data")
+```
+
+## Principal Component Analysis
+
+### Handling Missing Values
+
+Notice that some values are missing (NA). We need to address this before PCA:
+
+```{r check-missing, exercise=TRUE}
+# Check for missing values
+colSums(is.na(food_data))
+
+# Visualize missing data pattern
+missing_pattern <- sapply(food_data[, food_vars], function(x) sum(is.na(x)))
+barplot(missing_pattern, las = 2, main = "Missing Values per Variable",
+        cex.names = 0.7, col = "steelblue")
+```
+
+```{r handle-missing, exercise=TRUE}
+# Option 1: Remove rows with missing values (simple approach)
+food_complete <- na.omit(food_data)
+cat("Countries remaining:", nrow(food_complete), "\n")
+cat("Countries removed:", food_data$Country[!complete.cases(food_data)])
+
+# Option 2: Impute missing values with column means
+food_imputed <- food_data
+for(col in food_vars) {
+  food_imputed[[col]][is.na(food_imputed[[col]])] <- mean(food_imputed[[col]], na.rm = TRUE)
+}
+
+# We'll use the imputed version for our analysis
+cat("\nUsing imputed dataset with all", nrow(food_imputed), "countries")
+```
+
+### Performing PCA
+
+```{r pca-basic, exercise=TRUE}
+# Perform PCA on the food variables (columns 5 onwards)
+# Using scale = TRUE for standardization (UV scaling)
+pca_food <- prcomp(food_imputed[, food_vars], 
+                   scale. = TRUE, 
+                   center = TRUE)
+
+# Display summary
+summary(pca_food)
+
+# Calculate variance explained
+variance_explained <- pca_food$sdev^2
+total_variance <- sum(variance_explained)
+r2_values <- variance_explained / total_variance
+r2_cumulative <- cumsum(r2_values)
+
+cat("\nVariance explained by first 3 PCs:\n")
+cat("PC1:", round(r2_values[1]*100, 1), "%\n")
+cat("PC2:", round(r2_values[2]*100, 1), "%\n")
+cat("PC3:", round(r2_values[3]*100, 1), "%\n")
+cat("\nCumulative variance (PC1+PC2):", round(r2_cumulative[2]*100, 1), "%\n")
+cat("Cumulative variance (PC1+PC2+PC3):", round(r2_cumulative[3]*100, 1), "%\n")
+```
+
+```{r pca-basic-solution}
+pca_food <- prcomp(food_imputed[, food_vars], scale. = TRUE, center = TRUE)
+summary(pca_food)
+
+variance_explained <- pca_food$sdev^2
+total_variance <- sum(variance_explained)
+r2_values <- variance_explained / total_variance
+r2_cumulative <- cumsum(r2_values)
+
+cat("PC1:", round(r2_values[1]*100, 1), "%\n")
+cat("PC2:", round(r2_values[2]*100, 1), "%\n")
+cat("Cumulative (PC1+PC2):", round(r2_cumulative[2]*100, 1), "%\n")
+```
+
+### Quiz: Model Quality
+
+```{r quiz-pca-quality}
+quiz(
+  question("Based on the PCA summary, how many principal components would you consider sufficient to describe the data?",
+    answer("1 component"),
+    answer("2 components", correct = TRUE),
+    answer("3 components"),
+    answer("All 20 components"),
+    message = "The first two components typically explain around 50-60% of the variance, which is reasonable for this type of data. Adding a third component helps capture more nuance."
+  ),
+  question("What can you say about the quality of this PCA model compared to the IRIS dataset?",
+    answer("Much better - higher R²"),
+    answer("About the same"),
+    answer("Not as good - lower R²", correct = TRUE),
+    answer("Cannot compare different datasets"),
+    message = "Food consumption data is more complex and variable than flower measurements, so we expect lower R² values. This is normal for behavioral/social data."
+  )
+)
+```
+
+## Scores Plot (PC1 vs PC2)
+
+The scores plot shows how countries are positioned based on their food consumption patterns:
+
+```{r scores-plot, exercise=TRUE}
+# Prepare scores data
+scores_df <- data.frame(
+  PC1 = pca_food$x[,1],
+  PC2 = pca_food$x[,2],
+  Country = food_imputed$Country,
+  Geographic_Location = food_imputed$Geographic_Location,
+  Capitol_Latitude = food_imputed$Capitol_Latitude
+)
+
+# Create scores plot colored by geographic location
+ggplot(scores_df, aes(x = PC1, y = PC2, color = Geographic_Location, label = Country)) +
+  geom_point(size = 4, alpha = 0.7) +
+  geom_text(vjust = -0.7, hjust = 0.5, size = 3) +
+  labs(title = "PCA Scores Plot - European Food Consumption",
+       x = paste0("PC1 (", round(r2_values[1]*100, 1), "% variance)"),
+       y = paste0("PC2 (", round(r2_values[2]*100, 1), "% variance)"),
+       color = "Region") +
+  scale_color_manual(values = c("C" = "#E69F00", "S" = "#D55E00", 
+                                 "N" = "#0072B2", "U" = "#009E73", 
+                                 "X" = "#CC79A7"),
+                     labels = c("C" = "Central", "S" = "Southern", 
+                                "N" = "Northern", "U" = "UK/Ireland", 
+                                "X" = "Benelux")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r scores-plot-solution}
+scores_df <- data.frame(
+  PC1 = pca_food$x[,1],
+  PC2 = pca_food$x[,2],
+  Country = food_imputed$Country,
+  Geographic_Location = food_imputed$Geographic_Location
+)
+
+ggplot(scores_df, aes(x = PC1, y = PC2, color = Geographic_Location, label = Country)) +
+  geom_point(size = 4, alpha = 0.7) +
+  geom_text(vjust = -0.7, size = 3) +
+  labs(title = "PCA Scores Plot",
+       x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(r2_values[2]*100, 1), "%)")) +
+  theme_minimal()
+```
+
+### Interactive Scores Plot
+
+```{r interactive-scores, exercise=TRUE}
+# Create interactive plot with plotly
+library(plotly)
+
+p <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Geographic_Location, 
+                           text = paste("Country:", Country))) +
+  geom_point(size = 4, alpha = 0.7) +
+  geom_text(aes(label = Country), vjust = -0.7, size = 3, show.legend = FALSE) +
+  labs(title = "Interactive PCA Scores Plot",
+       x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(r2_values[2]*100, 1), "%)"),
+       color = "Region") +
+  theme_minimal()
+
+ggplotly(p, tooltip = c("text", "colour"))
+```
+
+### Quiz: Identifying Clusters
+
+```{r quiz-clusters}
+quiz(
+  question("Are there clear clusters present in the scores plot?",
+    answer("No clusters"),
+    answer("Yes, some regional patterns", correct = TRUE),
+    answer("Perfect separation by region"),
+    answer("Only 2 distinct clusters"),
+    message = "You can see some regional groupings, particularly Northern European countries clustering together, and Mediterranean countries showing similarity."
+  ),
+  question("Which countries appear most different from the others?",
+    answer("Germany and France"),
+    answer("England and Ireland", correct = TRUE),
+    answer("Sweden and Norway"),
+    answer("Portugal and Spain"),
+    message = "England and Ireland (UK region) show distinctive food consumption patterns, separating them from continental Europe."
+  )
+)
+```
+
+## Loadings Plot
+
+The loadings plot shows which food items contribute most to the patterns we see:
+
+```{r loadings-plot, exercise=TRUE}
+# Prepare loadings data
+loadings_df <- data.frame(
+  Variable = rownames(pca_food$rotation),
+  PC1 = pca_food$rotation[,1],
+  PC2 = pca_food$rotation[,2]
+)
+
+# Create loadings plot
+ggplot(loadings_df, aes(x = PC1, y = PC2)) +
+  geom_point(size = 3, color = "red", alpha = 0.7) +
+  geom_text(aes(label = Variable), vjust = -0.5, hjust = 0.5, size = 2.5, check_overlap = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
+  labs(title = "PCA Loadings Plot",
+       x = "PC1 Loadings",
+       y = "PC2 Loadings") +
+  theme_minimal() +
+  coord_fixed()
+```
+
+### Identify Top Contributing Variables
+
+```{r top-loadings, exercise=TRUE}
+# Find variables with strongest loadings on PC1
+pc1_loadings <- sort(abs(pca_food$rotation[,1]), decreasing = TRUE)
+cat("Top 5 variables contributing to PC1:\n")
+print(head(pc1_loadings, 5))
+
+# Find variables with strongest loadings on PC2
+pc2_loadings <- sort(abs(pca_food$rotation[,2]), decreasing = TRUE)
+cat("\nTop 5 variables contributing to PC2:\n")
+print(head(pc2_loadings, 5))
+
+# Show actual direction (positive or negative)
+cat("\nPC1 loadings (with direction):\n")
+print(sort(pca_food$rotation[,1], decreasing = TRUE)[1:5])
+cat("\nPC1 loadings (negative direction):\n")
+print(sort(pca_food$rotation[,1], decreasing = FALSE)[1:5])
+```
+
+### Quiz: Interpreting Loadings
+
+```{r quiz-loadings}
+quiz(
+  question("What food items are causing the main clustering patterns in the scores plot?",
+    answer("Coffee and tea only"),
+    answer("Garlic and Olive oil", correct = TRUE),
+    answer("Butter and margarine only"),
+    answer("All foods equally"),
+    message = "Garlic and Olive oil have strong loadings and clearly distinguish Mediterranean countries from Northern European countries."
+  )
+)
+```
+
+## PC1 vs PC3 Analysis
+
+Let's examine PC1 vs PC3 to understand other patterns:
+
+```{r scores-pc1-pc3, exercise=TRUE}
+# Prepare scores data for PC1 vs PC3
+scores_df_pc3 <- data.frame(
+  PC1 = pca_food$x[,1],
+  PC3 = pca_food$x[,3],
+  Country = food_imputed$Country,
+  Geographic_Location = food_imputed$Geographic_Location
+)
+
+# Create scores plot
+ggplot(scores_df_pc3, aes(x = PC1, y = PC3, color = Geographic_Location, label = Country)) +
+  geom_point(size = 4, alpha = 0.7) +
+  geom_text(vjust = -0.7, hjust = 0.5, size = 3) +
+  labs(title = "PCA Scores Plot - PC1 vs PC3",
+       x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
+       y = paste0("PC3 (", round(r2_values[3]*100, 1), "%)"),
+       color = "Region") +
+  scale_color_manual(values = c("C" = "#E69F00", "S" = "#D55E00", 
+                                 "N" = "#0072B2", "U" = "#009E73", 
+                                 "X" = "#CC79A7"),
+                     labels = c("C" = "Central", "S" = "Southern", 
+                                "N" = "Northern", "U" = "UK/Ireland", 
+                                "X" = "Benelux")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+### PC3 Loadings
+
+```{r loadings-pc3, exercise=TRUE}
+# Examine PC3 loadings
+loadings_pc3 <- data.frame(
+  Variable = rownames(pca_food$rotation),
+  PC1 = pca_food$rotation[,1],
+  PC3 = pca_food$rotation[,3]
+)
+
+ggplot(loadings_pc3, aes(x = PC1, y = PC3)) +
+  geom_point(size = 3, color = "red", alpha = 0.7) +
+  geom_text(aes(label = Variable), vjust = -0.5, hjust = 0.5, size = 2.5, check_overlap = TRUE) +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.5) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.5) +
+  labs(title = "PCA Loadings Plot - PC1 vs PC3",
+       x = "PC1 Loadings",
+       y = "PC3 Loadings") +
+  theme_minimal() +
+  coord_fixed()
+
+# Show top contributors to PC3
+cat("\nTop contributors to PC3:\n")
+print(sort(abs(pca_food$rotation[,3]), decreasing = TRUE)[1:5])
+```
+
+### Detailed Country Comparison
+
+```{r country-detail, exercise=TRUE}
+# Compare specific countries mentioned in the exercise
+countries_of_interest <- c("England", "Ireland", "Portugal", "Spain", 
+                           "Sweden", "Denmark")
+
+# Extract their data
+subset_data <- food_imputed %>%
+  filter(Country %in% countries_of_interest) %>%
+  select(Country, Garlic, Olive_Oil, Tea, Ground_Coffee)
+
+print(subset_data)
+
+# Visualize
+subset_long <- subset_data %>%
+  pivot_longer(cols = c(Garlic, Olive_Oil, Tea, Ground_Coffee),
+               names_to = "Food", values_to = "Percentage")
+
+ggplot(subset_long, aes(x = Country, y = Percentage, fill = Food)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Key Food Items - Selected Countries",
+       y = "Percentage of Households")
+```
+
+### Quiz: PC1 vs PC3 Interpretation
+
+```{r quiz-pc3}
+quiz(
+  question("What separates England and Ireland from the rest of Europe on PC1 vs PC3?",
+    answer("Their high tea consumption", correct = TRUE),
+    answer("Their high coffee consumption"),
+    answer("Their butter usage"),
+    answer("Their yoghurt consumption"),
+    message = "England and Ireland have distinctively high tea consumption (99%) compared to most continental European countries."
+  ),
+  question("How does the Garlic and Olive oil intake of England/Ireland compare to the rest of Europe?",
+    answer("Much higher than average"),
+    answer("About average"),
+    answer("Much lower than average", correct = TRUE),
+    answer("Only olive oil is lower"),
+    message = "England and Ireland have very low garlic (2%) and olive oil (1%) consumption compared to Mediterranean countries like Spain (23% garlic, 49% olive oil)."
+  )
+)
+```
+
+## Enhanced Visualizations
+
+### Biplot - Scores and Loadings Together
+
+```{r biplot, exercise=TRUE}
+# Create a biplot showing both scores and loadings
+library(factoextra)
+
+fviz_pca_biplot(pca_food,
+                label = "var",
+                col.ind = food_imputed$Geographic_Location,
+                palette = c("C" = "#E69F00", "S" = "#D55E00", 
+                           "N" = "#0072B2", "U" = "#009E73", 
+                           "X" = "#CC79A7"),
+                addEllipses = FALSE,
+                col.var = "black",
+                repel = TRUE,
+                legend.title = "Region",
+                title = "PCA Biplot - Food Consumption Patterns") +
+  theme_minimal()
+```
+
+### Contribution of Variables
+
+```{r variable-contribution, exercise=TRUE}
+# Visualize variable contributions to PC1 and PC2
+library(factoextra)
+
+# Contributions to PC1
+fviz_contrib(pca_food, choice = "var", axes = 1, top = 10) +
+  labs(title = "Top 10 Variables Contributing to PC1") +
+  theme_minimal()
+```
+
+```{r variable-contribution-pc2, exercise=TRUE}
+# Contributions to PC2
+fviz_contrib(pca_food, choice = "var", axes = 2, top = 10) +
+  labs(title = "Top 10 Variables Contributing to PC2") +
+  theme_minimal()
+```
+
+## Alternative Univariate Approaches
+
+If multivariate methods don't provide sufficient clarity, what alternative approaches could you use?
+
+```{r univariate-viz, exercise=TRUE}
+# Heatmap of food consumption by country
+library(tidyr)
+
+# Select a subset of interesting foods
+foods_subset <- c("Garlic", "Olive_Oil", "Tea", "Ground_Coffee", 
+                  "Butter", "Margarine", "Frozen_Vegetables")
+
+heatmap_data <- food_imputed %>%
+  select(Country, all_of(foods_subset))
+
+# Convert to long format
+heatmap_long <- heatmap_data %>%
+  pivot_longer(cols = -Country, names_to = "Food", values_to = "Percentage")
+
+# Create heatmap
+ggplot(heatmap_long, aes(x = Food, y = Country, fill = Percentage)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "white", mid = "yellow", high = "red", 
+                       midpoint = 50) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Heatmap of Food Consumption by Country",
+       fill = "% Households")
+```
+
+### Clustering Analysis
+
+```{r clustering, exercise=TRUE}
+# Hierarchical clustering
+food_matrix <- as.matrix(food_imputed[, food_vars])
+rownames(food_matrix) <- food_imputed$Country
+
+# Calculate distance and perform clustering
+dist_matrix <- dist(scale(food_matrix))
+hc <- hclust(dist_matrix, method = "ward.D2")
+
+# Plot dendrogram
+plot(hc, main = "Hierarchical Clustering of Countries",
+     xlab = "Country", ylab = "Distance", sub = "")
+rect.hclust(hc, k = 4, border = 2:5)
+```
+
+### Regional Comparisons
+
+```{r regional-comparison, exercise=TRUE}
+# Compare regions on key foods
+regional_summary <- food_imputed %>%
+  group_by(Geographic_Location) %>%
+  summarise(
+    Avg_Garlic = mean(Garlic, na.rm = TRUE),
+    Avg_Olive_Oil = mean(Olive_Oil, na.rm = TRUE),
+    Avg_Tea = mean(Tea, na.rm = TRUE),
+    Avg_Coffee = mean(Ground_Coffee, na.rm = TRUE),
+    Avg_Butter = mean(Butter, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+print(regional_summary)
+
+# Visualize
+regional_long <- regional_summary %>%
+  pivot_longer(cols = starts_with("Avg_"), 
+               names_to = "Food", 
+               values_to = "Average",
+               names_prefix = "Avg_")
+
+ggplot(regional_long, aes(x = Geographic_Location, y = Average, fill = Food)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  theme_minimal() +
+  labs(title = "Average Food Consumption by Region",
+       x = "Geographic Region",
+       y = "Average % Households") +
+  scale_x_discrete(labels = c("C" = "Central", "N" = "Northern", 
+                               "S" = "Southern", "U" = "UK/Ireland", 
+                               "X" = "Benelux"))
+```
+
+## Summary and Key Takeaways
+
+### What We've Learned
+
+1. **Cultural Patterns**: Food consumption reflects clear geographic and cultural patterns across Europe
+2. **Mediterranean vs Northern**: Garlic and olive oil distinguish Southern European countries
+3. **UK Uniqueness**: England and Ireland show distinctive patterns with high tea consumption
+4. **PCA Interpretation**: Multiple PCs reveal different aspects of variation:
+   - PC1: Mediterranean vs Northern divide (Garlic, Olive oil)
+   - PC2: Other consumption patterns
+   - PC3: Tea drinking patterns (UK/Ireland)
+5. **Data Quality**: Food consumption data has more variability than biological measurements
+
+### Key Differences Identified
+
+**Portugal and Spain vs Sweden and Denmark:**
+- **Higher**: Garlic, Olive oil, Oranges
+- **Lower**: Frozen vegetables, Tinned fruit, Jam
+- **Cultural interpretation**: Mediterranean diet vs Nordic diet
+
+### Practice Exercise
+
+```{r final-exercise, exercise=TRUE}
+# Your comprehensive analysis task:
+# 1. Perform PCA on the food data
+# 2. Identify which food items best distinguish Northern from Southern Europe
+# 3. Create a visualization showing this distinction
+
+# Start your analysis here:
+pca_final <- prcomp(food_imputed[, food_vars], scale. = TRUE)
+
+# Add your code below:
+
+```
+
+```{r final-exercise-solution}
+# Complete analysis
+pca_final <- prcomp(food_imputed[, food_vars], scale. = TRUE)
+
+# Identify key variables
+loadings_pc1 <- sort(pca_final$rotation[,1], decreasing = TRUE)
+cat("Foods more common in one direction:\n")
+print(head(loadings_pc1, 3))
+cat("\nFoods more common in opposite direction:\n")
+print(tail(loadings_pc1, 3))
+
+# Visualize
+scores_final <- data.frame(
+  PC1 = pca_final$x[,1],
+  PC2 = pca_final$x[,2],
+  Country = food_imputed$Country,
+  Region = food_imputed$Geographic_Location
+)
+
+ggplot(scores_final, aes(x = PC1, y = PC2, color = Region, label = Country)) +
+  geom_point(size = 4) +
+  geom_text(vjust = -0.7, size = 2.5) +
+  labs(title = "European Food Consumption Patterns") +
+  theme_minimal()
+```
+
+### Discussion Questions
+
+1. **Why do you think there are such clear regional patterns in food consumption?**
+   - Climate and agriculture
+   - Cultural traditions
+   - Historical trade patterns
+
+2. **What other factors might explain the differences beyond geography?**
+   - Economic development
+   - Urbanization
+   - Immigration patterns
+   - EU integration effects
+
+3. **How reliable is this data for making inferences about actual consumption?**
+   - Based on household presence, not quantity
+   - Survey-based (potential biases)
+   - Temporal snapshot (may change over time)
