@@ -1,0 +1,1065 @@
+---
+title: "Multivariate Data Analysis: NMR Metabolomics"
+subtitle: "PCA, PCA-Class, and PLS-DA in Metabolomics"
+output: 
+  learnr::tutorial:
+    progressive: true
+    allow_skip: true
+runtime: shiny_prerendered
+---
+
+```{r setup, include=FALSE}
+library(learnr)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+library(factoextra)
+library(FactoMineR)
+library(knitr)
+library(DT)
+library(tidyr)
+library(mixOmics)
+library(pls)
+
+# Set up tutorial options
+tutorial_options(exercise.timelimit = 60)
+
+# Note: In practice, students would load their own data
+# For this tutorial, we'll create a simulated dataset with similar structure
+# In real use: metabolomics_data <- readxl::read_excel("metabolomics.xlsx", sheet = 1)
+
+# Simulate metabolomics data structure (57 observations, 655 NMR variables)
+set.seed(42)
+n_samples <- 57
+n_vars <- 655
+
+# Create sample IDs based on the description
+# MYB76: A1-A8, B1-B8, C1-C8 (Class 1)
+# Wild type: D1-D8, E1-E8, F1-F8 (Class 0)
+sample_ids <- c(
+  paste0("A", 1:8), paste0("B", 1:8), paste0("C", 1:8),  # MYB76
+  paste0("D", 1:8), paste0("E", 1:8), paste0("F", 1:7)   # Wild type (46 samples + replicates)
+)
+
+# Add some analytical replicates
+sample_ids <- c(sample_ids, paste0(sample(sample_ids, 11), "_rep"))
+sample_ids <- sample_ids[1:n_samples]
+
+# Create class labels
+class_labels <- ifelse(substr(sample_ids, 1, 1) %in% c("A", "B", "C"), 1, 0)
+
+# Extract tree and internode information
+tree_letter <- substr(sample_ids, 1, 1)
+internode <- as.numeric(gsub("[A-F]|_rep", "", sample_ids))
+internode[is.na(internode)] <- sample(1:8, sum(is.na(internode)), replace = TRUE)
+
+# Simulate NMR data with realistic structure
+# Create base profiles for each class
+metabolomics_data <- data.frame(
+  Sample_ID = sample_ids,
+  Class = factor(class_labels, levels = c(0, 1), labels = c("Wild_Type", "MYB76")),
+  Tree = tree_letter,
+  Internode = internode
+)
+
+# Generate NMR variables (chemical shift regions)
+# Add class-specific patterns and internode trends
+for(i in 1:n_vars) {
+  # Base signal
+  signal <- rnorm(n_samples, mean = 5, sd = 2)
+  
+  # Add class effect (some variables differentiate classes)
+  if(i <= 200) {  # First 200 variables have class differences
+    signal <- signal + ifelse(class_labels == 1, rnorm(n_samples, 2, 0.5), rnorm(n_samples, -2, 0.5))
+  }
+  
+  # Add internode trend (growth effect)
+  if(i > 200 && i <= 400) {
+    signal <- signal + internode * 0.3 + rnorm(n_samples, 0, 0.5)
+  }
+  
+  # Add tree-specific variation
+  signal <- signal + rnorm(n_samples, 0, 0.3)
+  
+  # Ensure positive values (like NMR intensities)
+  signal <- abs(signal)
+  
+  # Create variable name (chemical shift region)
+  var_name <- sprintf("NMR_%.2f", 0.02 * i)
+  metabolomics_data[[var_name]] <- signal
+}
+
+# Store variable names
+nmr_vars <- grep("NMR_", names(metabolomics_data), value = TRUE)
+```
+
+## Background
+
+A gene encoding MYB transcription factor, with unknown function, **PttMYB76**, was selected from a library of poplar trees for metabolomic characterization of the growth process in Poplar trees.
+
+### The Biological Question
+
+The PttMYB76 gene is believed to affect different pathways in the phenyl propanoid synthetic pathway. This pathway leads to the formation of:
+- S- and G-lignin
+- Flavonoids  
+- Sinapate esters
+
+### Experimental Design
+
+![Poplar Plant Sampling Design](https://via.placeholder.com/300x400.png?text=Poplar+Tree+Internodes+1-8+from+top+to+bottom)
+
+**Figure**: Poplar plant response vector (internodes). The growth- or time-related response vector, where internode 1 is at the top (youngest) and internode 8 at the bottom (oldest).
+
+**Sample Collection:**
+- 12-week-old poplar plants
+- Two genotypes:
+  - **Wild Type (WT)**: Trees D, E, F (Class 0)
+  - **MYB76 modified**: Trees A, B, C (Class 1)
+- 3 trees per genotype
+- 8 internodes per tree (apex removed before sampling)
+- Total: 46 plant samples + analytical replicates = 57 observations
+
+### Data Structure
+
+- **N = 57 observations**: 6 trees × 8 internodes + replicates
+- **K = 655 variables**: ¹H-NMR chemical shift regions (0.02 ppm buckets)
+- **Response variable**: Class (0 = Wild Type, 1 = MYB76)
+- **Growth vector**: Internode number (1 = top/young, 8 = bottom/old)
+
+```{r explore-data, exercise=TRUE}
+# Examine the data structure
+head(metabolomics_data[, 1:10])  # First few columns
+
+# Check dimensions
+cat("Number of samples:", nrow(metabolomics_data), "\n")
+cat("Number of variables:", length(nmr_vars), "\n")
+
+# Class distribution
+table(metabolomics_data$Class)
+
+# Tree distribution
+table(metabolomics_data$Tree)
+```
+
+## Objectives
+
+In this tutorial you will:
+
+1. **Demonstrate how to analyze metabolomics data** from control and treated groups
+   - Use PCA to review data, identify patterns and trends
+   
+2. **Identify differences and putative biomarkers** using:
+   - PCA for unsupervised exploration
+   - PCA-Class for within-class variation
+   - PLS-DA for supervised classification
+   
+3. **Compare the strength of PLS-DA vs PCA** for finding biomarkers
+
+4. **Describe model diagnostics** of PLS-DA models
+
+## Understanding Scaling Methods
+
+Before we start, let's understand different scaling approaches:
+
+```{r scaling-info, echo=FALSE}
+cat("SCALING METHODS IN METABOLOMICS:\n\n")
+
+cat("1. NO SCALING (Mean-centered only):\n")
+cat("   - Variables keep their original variance\n")
+cat("   - High-intensity signals dominate the model\n")
+cat("   - Use when: All variables have similar ranges\n\n")
+
+cat("2. UNIT VARIANCE (UV) SCALING:\n")
+cat("   - Divide by standard deviation\n")
+cat("   - All variables have equal importance\n")
+cat("   - Use when: You want to emphasize small peaks equally\n")
+cat("   - Analysis based on correlations, not covariances\n\n")
+
+cat("3. PARETO SCALING:\n")
+cat("   - Divide by square root of standard deviation\n")
+cat("   - Intermediate between No scaling and UV\n")
+cat("   - Large variances reduced more than small ones\n")
+cat("   - Preferred for metabolomics: balances signal importance\n\n")
+```
+
+### Visualizing Scaling Effects
+
+```{r scaling-demo, exercise=TRUE}
+# Take a few example variables to demonstrate scaling
+example_vars <- metabolomics_data[, c("NMR_1.00", "NMR_5.00", "NMR_10.00")]
+
+# Function to apply different scaling
+apply_scaling <- function(x, method = "none") {
+  x_centered <- scale(x, center = TRUE, scale = FALSE)
+  
+  if(method == "uv") {
+    return(scale(x, center = TRUE, scale = TRUE))
+  } else if(method == "pareto") {
+    sds <- apply(x, 2, sd)
+    return(scale(x, center = TRUE, scale = FALSE) / sqrt(sds))
+  } else {
+    return(x_centered)
+  }
+}
+
+# Compare standard deviations
+cat("Standard deviations before scaling:\n")
+print(apply(example_vars, 2, sd))
+
+cat("\nStandard deviations after UV scaling:\n")
+print(apply(apply_scaling(example_vars, "uv"), 2, sd))
+
+cat("\nStandard deviations after Pareto scaling:\n")
+print(apply(apply_scaling(example_vars, "pareto"), 2, sd))
+```
+
+## PCA Analysis with Pareto Scaling
+
+Let's start with an unsupervised PCA using Pareto scaling:
+
+```{r pca-pareto, exercise=TRUE}
+# Extract NMR variables
+X <- metabolomics_data[, nmr_vars]
+
+# Apply Pareto scaling
+X_centered <- scale(X, center = TRUE, scale = FALSE)
+sds <- apply(X, 2, sd)
+X_pareto <- X_centered / sqrt(sds)
+
+# Perform PCA
+pca_result <- prcomp(X_pareto, center = FALSE, scale. = FALSE)
+
+# Summary
+summary(pca_result)
+
+# Calculate variance explained
+variance_explained <- pca_result$sdev^2
+total_variance <- sum(variance_explained)
+r2_values <- variance_explained / total_variance
+r2_cumulative <- cumsum(r2_values)
+
+cat("\nVariance explained by first 5 PCs:\n")
+for(i in 1:5) {
+  cat(sprintf("PC%d: %.1f%%\n", i, r2_values[i]*100))
+}
+cat(sprintf("\nCumulative (PC1-PC2): %.1f%%\n", r2_cumulative[2]*100))
+cat(sprintf("Cumulative (PC1-PC3): %.1f%%\n", r2_cumulative[3]*100))
+```
+
+```{r pca-pareto-solution}
+X <- metabolomics_data[, nmr_vars]
+X_centered <- scale(X, center = TRUE, scale = FALSE)
+sds <- apply(X, 2, sd)
+X_pareto <- X_centered / sqrt(sds)
+pca_result <- prcomp(X_pareto, center = FALSE, scale. = FALSE)
+summary(pca_result)
+```
+
+### Quiz: PCA Quality Assessment
+
+```{r quiz-pca-quality}
+quiz(
+  question("How many components did the PCA calculate and what does this tell you about the data?",
+    answer("It calculated 57 components (number of samples)"),
+    answer("It calculated components up to min(n-1, p)", correct = TRUE),
+    answer("It only calculated 2 components"),
+    answer("It calculated 655 components"),
+    message = "PCA can calculate at most min(n-1, p) components. With 57 samples, we can get up to 56 components."
+  ),
+  question("What does it mean if some samples have high leverage or are outliers?",
+    answer("They are measurement errors and should always be removed"),
+    answer("They may represent unique biological variation", correct = TRUE),
+    answer("The PCA model is invalid"),
+    answer("The scaling was wrong"),
+    message = "Outliers in metabolomics can indicate biological variation, sample degradation, or analytical issues. They need investigation, not automatic removal."
+  )
+)
+```
+
+## PCA Scores Plot - Exploring Patterns
+
+```{r pca-scores, exercise=TRUE}
+# Create scores dataframe
+scores_df <- data.frame(
+  PC1 = pca_result$x[,1],
+  PC2 = pca_result$x[,2],
+  PC3 = pca_result$x[,3],
+  Sample_ID = metabolomics_data$Sample_ID,
+  Class = metabolomics_data$Class,
+  Tree = metabolomics_data$Tree,
+  Internode = metabolomics_data$Internode
+)
+
+# Scores plot colored by Class
+p1 <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Class, shape = Class)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PCA Scores Plot - Colored by Class",
+       x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(r2_values[2]*100, 1), "%)")) +
+  scale_color_manual(values = c("Wild_Type" = "#0072B2", "MYB76" = "#D55E00")) +
+  theme_minimal()
+```
+
+## Variable Importance in PLS-DA
+
+Identifying the most important variables (potential biomarkers):
+
+```{r plsda-vip, exercise=TRUE}
+# Calculate VIP (Variable Importance in Projection) scores
+# VIP > 1 indicates important variables
+
+# Function to calculate VIP
+vip_scores <- function(model) {
+  # Get loadings and explained variance
+  W <- model$loading.weights
+  Q <- model$Yloadings
+  
+  # Calculate VIP for each variable
+  SS <- colSums(Q^2) * colSums(model$scores^2)
+  Wnorm2 <- colSums(W^2)
+  SSW <- sweep(W^2, 2, SS, "*")
+  
+  vip <- sqrt(nrow(SSW) * apply(SSW, 1, sum) / sum(SS))
+  return(vip)
+}
+
+vip <- vip_scores(plsda_model)
+
+# Get top 30 VIP scores
+top_vip_idx <- order(vip, decreasing = TRUE)[1:30]
+top_vip_df <- data.frame(
+  Variable = names(vip)[top_vip_idx],
+  VIP = vip[top_vip_idx]
+)
+
+# Plot VIP scores
+ggplot(top_vip_df, aes(x = reorder(Variable, VIP), y = VIP)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  geom_hline(yintercept = 1, linetype = "dashed", color = "red") +
+  coord_flip() +
+  labs(title = "Top 30 Variables by VIP Score",
+       subtitle = "VIP > 1 indicates important variables",
+       x = "NMR Variable", y = "VIP Score") +
+  theme_minimal()
+
+cat("\nVariables with VIP > 1:\n")
+important_vars <- names(vip)[vip > 1]
+cat(length(important_vars), "variables\n")
+```
+
+### Loadings Plot for PLS-DA
+
+```{r plsda-loadings, exercise=TRUE}
+# Extract loadings
+loadings <- loadings(plsda_model)[,1:2]
+
+# Plot only top variables by VIP
+top_vars <- names(vip)[order(vip, decreasing = TRUE)[1:50]]
+loadings_subset <- loadings[top_vars, ]
+
+loadings_plot_df <- data.frame(
+  Variable = rownames(loadings_subset),
+  LV1 = loadings_subset[,1],
+  LV2 = loadings_subset[,2],
+  VIP = vip[top_vars]
+)
+
+ggplot(loadings_plot_df, aes(x = LV1, y = LV2, size = VIP)) +
+  geom_point(alpha = 0.6, color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.3) +
+  labs(title = "PLS-DA Loadings Plot (Top 50 by VIP)",
+       x = "LV1 Loadings", y = "LV2 Loadings",
+       size = "VIP Score") +
+  theme_minimal()
+```
+
+## Comparing PCA vs PLS-DA
+
+```{r compare-methods, exercise=TRUE}
+# Side-by-side comparison
+library(gridExtra)
+
+# PCA plot
+p_pca <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Class)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PCA (Unsupervised)",
+       x = "PC1", y = "PC2") +
+  scale_color_manual(values = c("Wild_Type" = "#0072B2", "MYB76" = "#D55E00")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# PLS-DA plot
+p_plsda <- ggplot(plsda_scores_df, aes(x = LV1, y = LV2, color = Class)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PLS-DA (Supervised)",
+       x = "LV1", y = "LV2") +
+  scale_color_manual(values = c("Wild_Type" = "#0072B2", "MYB76" = "#D55E00")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+grid.arrange(p_pca, p_plsda, ncol = 2)
+```
+
+### Discussion: PCA vs PLS-DA
+
+```{r comparison-table, echo=FALSE}
+comparison <- data.frame(
+  Aspect = c("Approach", "Uses Class Info", "Goal", "Best For", "Overfitting Risk", "Biomarker Discovery"),
+  PCA = c("Unsupervised", "No", "Maximize variance", "Exploratory analysis", "Low", "Identifies major patterns"),
+  `PLS-DA` = c("Supervised", "Yes", "Maximize class separation", "Classification & biomarkers", "Higher (needs validation)", "Identifies discriminating variables")
+)
+
+kable(comparison, col.names = c("Aspect", "PCA", "PLS-DA"),
+      caption = "PCA vs PLS-DA Comparison")
+```
+
+### Quiz: Understanding Method Differences
+
+```{r quiz-comparison}
+quiz(
+  question("In what way does PLS-DA provide 'better' information than PCA?",
+    answer("PLS-DA always has higher R²"),
+    answer("PLS-DA focuses on class-discriminating variation", correct = TRUE),
+    answer("PLS-DA doesn't need validation"),
+    answer("PLS-DA uses more components"),
+    message = "PLS-DA is supervised, so it specifically finds variation that discriminates between classes, making class separation clearer."
+  ),
+  question("Why is it easier to find important biomarkers in PLS-DA?",
+    answer("PLS-DA has more variables"),
+    answer("PLS-DA provides VIP scores focusing on discriminating variables", correct = TRUE),
+    answer("PLS-DA always finds true biomarkers"),
+    answer("PLS-DA doesn't require validation"),
+    message = "PLS-DA calculates VIP scores that identify variables most important for class discrimination. However, these still need biological validation."
+  ),
+  question("Why must PLS-DA always be validated with cross-validation?",
+    answer("It's not necessary if R² is high"),
+    answer("Supervised methods can overfit to the training data", correct = TRUE),
+    answer("PCA doesn't need it, so PLS-DA shouldn't either"),
+    answer("To make the analysis take longer"),
+    message = "Because PLS-DA uses class labels, it can overfit. Cross-validation (Q²) ensures the model generalizes to new samples."
+  )
+)
+```
+
+## Model Diagnostics and Validation
+
+### Permutation Testing
+
+```{r permutation-test, exercise=TRUE}
+# Perform permutation test to assess model significance
+set.seed(123)
+n_perms <- 100
+
+# Original Q2
+original_Q2 <- Q2[optimal_ncomp]
+
+# Permutation Q2 values
+perm_Q2 <- numeric(n_perms)
+
+for(i in 1:n_perms) {
+  # Permute class labels
+  Y_perm <- sample(Y)
+  
+  # Fit model
+  perm_model <- plsr(Y_perm ~ X_pareto, ncomp = optimal_ncomp, validation = "LOO")
+  
+  # Calculate Q2
+  PRESS_perm <- perm_model$validation$PRESS[optimal_ncomp + 1]
+  TSS_perm <- sum((Y_perm - mean(Y_perm))^2)
+  perm_Q2[i] <- 1 - PRESS_perm / TSS_perm
+}
+
+# Plot permutation distribution
+hist(perm_Q2, breaks = 20, col = "lightblue", 
+     main = "Permutation Test - Q2 Distribution",
+     xlab = "Q2 Value", xlim = c(min(perm_Q2, original_Q2), max(perm_Q2, original_Q2)))
+abline(v = original_Q2, col = "red", lwd = 2, lty = 2)
+legend("topright", legend = c("Original Q2"), col = "red", lty = 2, lwd = 2)
+
+# P-value
+p_value <- sum(perm_Q2 >= original_Q2) / n_perms
+cat(sprintf("\nOriginal Q2: %.3f\n", original_Q2))
+cat(sprintf("P-value: %.3f\n", p_value))
+cat(sprintf("Interpretation: %s\n", 
+            ifelse(p_value < 0.05, "Model is significant!", "Model may not be significant.")))
+```
+
+### Cross-Validation Predictions
+
+```{r cv-predictions, exercise=TRUE}
+# Examine cross-validation predictions
+cv_preds <- plsda_model$validation$pred[,,optimal_ncomp]
+cv_class <- ifelse(cv_preds > 0.5, "MYB76", "Wild_Type")
+
+# CV Confusion matrix
+cv_confusion <- table(Predicted = cv_class, True = metabolomics_data$Class)
+print("Cross-Validation Confusion Matrix:")
+print(cv_confusion)
+
+# CV Accuracy
+cv_accuracy <- sum(diag(cv_confusion)) / sum(cv_confusion)
+cat(sprintf("\nCross-Validation Accuracy: %.1f%%\n", cv_accuracy * 100))
+
+# Compare to training accuracy
+cat(sprintf("Training Accuracy: %.1f%%\n", accuracy * 100))
+cat(sprintf("Difference: %.1f%%\n", (accuracy - cv_accuracy) * 100))
+
+if(accuracy - cv_accuracy > 0.1) {
+  cat("\nWarning: Large difference suggests potential overfitting!\n")
+} else {
+  cat("\nGood: Training and CV accuracies are similar.\n")
+}
+```
+
+## Identifying Potential Biomarkers
+
+```{r biomarker-analysis, exercise=TRUE}
+# Extract top biomarker candidates (VIP > 1)
+biomarker_candidates <- names(vip)[vip > 1]
+
+cat(sprintf("Found %d potential biomarker candidates (VIP > 1)\n\n", length(biomarker_candidates)))
+
+# Show top 10
+top_10_biomarkers <- names(sort(vip, decreasing = TRUE)[1:10])
+cat("Top 10 biomarker candidates:\n")
+for(i in 1:10) {
+  cat(sprintf("%2d. %s (VIP = %.3f)\n", i, top_10_biomarkers[i], vip[top_10_biomarkers[i]]))
+}
+
+# Visualize biomarker patterns
+top_biomarker <- top_10_biomarkers[1]
+biomarker_df <- data.frame(
+  Sample = metabolomics_data$Sample_ID,
+  Intensity = metabolomics_data[[top_biomarker]],
+  Class = metabolomics_data$Class,
+  Internode = metabolomics_data$Internode
+)
+
+ggplot(biomarker_df, aes(x = Class, y = Intensity, fill = Class)) +
+  geom_boxplot(alpha = 0.7) +
+  geom_jitter(width = 0.2, alpha = 0.5) +
+  labs(title = paste("Biomarker Candidate:", top_biomarker),
+       y = "NMR Intensity") +
+  scale_fill_manual(values = c("Wild_Type" = "#0072B2", "MYB76" = "#D55E00")) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+### Biomarker Validation Approach
+
+```{r biomarker-validation-info, echo=FALSE}
+cat("BIOMARKER VALIDATION STEPS:\n\n")
+
+cat("1. STATISTICAL VALIDATION:\n")
+cat("   - VIP score > 1 (from PLS-DA)\n")
+cat("   - Significant univariate test (t-test or Mann-Whitney)\n")
+cat("   - Cross-validation confirms importance\n")
+cat("   - Permutation testing supports model\n\n")
+
+cat("2. BIOLOGICAL VALIDATION:\n")
+cat("   - Link to known metabolic pathways\n")
+cat("   - Consistent with gene function (PttMYB76)\n")
+cat("   - Literature support\n")
+cat("   - Replication in independent samples\n\n")
+
+cat("3. ANALYTICAL VALIDATION:\n")
+cat("   - Confirm metabolite identity (2D-NMR, MS)\n")
+cat("   - Quantify with standards\n")
+cat("   - Check reproducibility\n")
+cat("   - Verify not due to technical artifacts\n")
+```
+
+## Summary and Key Takeaways
+
+### Workflow Summary
+
+```{r workflow-diagram, echo=FALSE}
+cat("METABOLOMICS WORKFLOW:\n\n")
+cat("1. DATA PREPROCESSING\n")
+cat("   ↓ Pareto scaling for metabolomics\n")
+cat("2. PCA (Unsupervised)\n")
+cat("   ↓ Explore overall patterns, outliers, trends\n")
+cat("3. PCA-CLASS\n")
+cat("   ↓ Check within-class homogeneity\n")
+cat("4. PLS-DA (Supervised)\n")
+cat("   ↓ Find discriminating variables\n")
+cat("5. VALIDATION\n")
+cat("   ↓ Cross-validation, permutation testing\n")
+cat("6. BIOMARKER IDENTIFICATION\n")
+cat("   ↓ VIP scores, loadings, biological interpretation\n")
+cat("7. BIOLOGICAL VALIDATION\n")
+cat("   → Confirm findings in independent studies\n")
+```
+
+### Key Findings from This Analysis
+
+```{r summary-findings, echo=FALSE}
+cat("KEY FINDINGS:\n\n")
+cat("1. PCA Results:\n")
+cat("   - Partial separation between MYB76 and Wild Type\n")
+cat("   - Clear growth trends (internode effects)\n")
+cat("   - Tree-specific variation present\n\n")
+
+cat("2. PCA-Class Results:\n")
+cat("   - Classes reasonably homogeneous\n")
+cat("   - Internal variation mainly due to growth stage\n")
+cat("   - Good foundation for PLS-DA\n\n")
+
+cat("3. PLS-DA Results:\n")
+cat("   - Good classification performance\n")
+cat("   - Q2 > 0.5 (if achieved)\n")
+cat("   - Multiple biomarker candidates identified\n")
+cat("   - Model validated through cross-validation\n\n")
+
+cat("4. Biological Interpretation:\n")
+cat("   - PttMYB76 affects phenylpropanoid pathway\n")
+cat("   - Metabolic differences detected\n")
+cat("   - Growth stage is important factor\n")
+```
+
+### Practice Exercise
+
+```{r final-exercise, exercise=TRUE}
+# Complete analysis workflow:
+# 1. Load and scale data
+# 2. Perform PCA
+# 3. Perform PLS-DA
+# 4. Identify top biomarkers
+# 5. Validate the model
+
+# Your code here:
+
+
+```
+
+```{r final-exercise-solution}
+# Complete workflow
+# 1. Prepare data
+X <- as.matrix(metabolomics_data[, nmr_vars])
+Y <- as.numeric(metabolomics_data$Class) - 1
+X_centered <- scale(X, center = TRUE, scale = FALSE)
+sds <- apply(X, 2, sd)
+X_pareto <- X_centered / sqrt(sds)
+
+# 2. PCA
+pca_final <- prcomp(X_pareto, center = FALSE, scale. = FALSE)
+cat("PCA variance explained (PC1-PC2):", 
+    round(sum(pca_final$sdev[1:2]^2) / sum(pca_final$sdev^2) * 100, 1), "%\n")
+
+# 3. PLS-DA
+plsda_final <- plsr(Y ~ X_pareto, ncomp = 3, validation = "LOO")
+
+# 4. Calculate Q2
+PRESS <- plsda_final$validation$PRESS
+TSS <- sum((Y - mean(Y))^2)
+Q2_final <- 1 - PRESS / TSS
+cat("\nQ2 values:", round(Q2_final, 3), "\n")
+
+# 5. Get predictions and accuracy
+preds <- predict(plsda_final, ncomp = 2)
+pred_class <- ifelse(preds > 0.5, 1, 0)
+accuracy_final <- mean(pred_class == Y)
+cat("Accuracy:", round(accuracy_final * 100, 1), "%\n")
+```
+
+### Next Steps in Real Research
+
+1. **Metabolite Identification**: Use 2D-NMR and MS to identify specific compounds
+2. **Pathway Analysis**: Map biomarkers to metabolic pathways
+3. **Independent Validation**: Test in new samples
+4. **Quantification**: Develop targeted methods for key biomarkers
+5. **Integration**: Combine with genomics/transcriptomics data
+6. **Biological Follow-up**: Functional studies of identified pathways
+
+### Key Differences: PCA vs PLS-DA
+
+**When to use PCA:**
+- Exploratory data analysis
+- No prior knowledge of groups
+- Identify overall patterns and outliers
+- Understand main sources of variation
+
+**When to use PLS-DA:**
+- Known groups to classify
+- Find discriminating biomarkers
+- Build predictive models
+- After PCA exploration
+- **Always validate with cross-validation!**
+
+Congratulations! You've completed the NMR Metabolomics tutorial and learned advanced techniques for metabolomics data analysis including PCA, PCA-Class, and PLS-DA!theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p1)
+```
+
+```{r pca-scores-internode, exercise=TRUE}
+# Scores plot colored by Internode (growth trend)
+p2 <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Internode)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PCA Scores Plot - Colored by Internode (Growth)",
+       x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(r2_values[2]*100, 1), "%)")) +
+  scale_color_gradient(low = "lightgreen", high = "darkgreen") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p2)
+```
+
+```{r pca-scores-tree, exercise=TRUE}
+# Scores plot by individual tree
+p3 <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Tree, shape = Class)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PCA Scores Plot - By Individual Tree",
+       x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(r2_values[2]*100, 1), "%)")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+print(p3)
+```
+
+### Interactive Exploration
+
+```{r pca-interactive, exercise=TRUE}
+# Interactive plot with plotly
+library(plotly)
+
+p <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Class,
+                           text = paste("Sample:", Sample_ID,
+                                      "<br>Tree:", Tree,
+                                      "<br>Internode:", Internode))) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "Interactive PCA Scores Plot",
+       x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(r2_values[2]*100, 1), "%)")) +
+  scale_color_manual(values = c("Wild_Type" = "#0072B2", "MYB76" = "#D55E00")) +
+  theme_minimal()
+
+ggplotly(p, tooltip = "text")
+```
+
+### Quiz: Interpreting PCA Patterns
+
+```{r quiz-pca-patterns}
+quiz(
+  question("What patterns can you identify in the PCA scores plot?",
+    answer("Perfect separation between classes"),
+    answer("Some clustering by class and trends by internode", correct = TRUE),
+    answer("No clear patterns at all"),
+    answer("Only random variation"),
+    message = "You should see some separation between MYB76 and Wild Type, plus trends related to plant growth (internode number)."
+  ),
+  question("For each class, what likely causes the most variance?",
+    answer("Only the genetic modification"),
+    answer("Only the growth stage (internode)"),
+    answer("Both genetic modification and growth stage", correct = TRUE),
+    answer("Random measurement error"),
+    message = "Both the genotype difference and the developmental stage (internode) contribute to the metabolic variation observed."
+  )
+)
+```
+
+## PCA Loadings Analysis
+
+```{r pca-loadings, exercise=TRUE}
+# Extract top loadings for PC1
+loadings_pc1 <- pca_result$rotation[,1]
+top_loadings_pc1 <- sort(abs(loadings_pc1), decreasing = TRUE)[1:20]
+
+cat("Top 20 variables contributing to PC1:\n")
+print(top_loadings_pc1)
+
+# Visualize loadings
+loadings_df <- data.frame(
+  Variable = names(loadings_pc1),
+  PC1 = loadings_pc1,
+  PC2 = pca_result$rotation[,2],
+  Importance = abs(loadings_pc1)
+)
+
+# Plot top 30 loadings for PC1
+top_vars <- names(sort(abs(loadings_pc1), decreasing = TRUE)[1:30])
+loadings_subset <- loadings_df[loadings_df$Variable %in% top_vars, ]
+
+ggplot(loadings_subset, aes(x = reorder(Variable, Importance), y = PC1)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Top 30 Variables Contributing to PC1",
+       x = "NMR Variable", y = "PC1 Loading") +
+  theme_minimal()
+```
+
+```{r loadings-biplot, exercise=TRUE}
+# Create a loadings plot (PC1 vs PC2)
+# Show only the most important variables for clarity
+top_50_vars <- names(sort(abs(loadings_pc1), decreasing = TRUE)[1:50])
+loadings_top <- loadings_df[loadings_df$Variable %in% top_50_vars, ]
+
+ggplot(loadings_top, aes(x = PC1, y = PC2)) +
+  geom_point(alpha = 0.5, color = "red") +
+  geom_hline(yintercept = 0, linetype = "dashed", alpha = 0.3) +
+  geom_vline(xintercept = 0, linetype = "dashed", alpha = 0.3) +
+  labs(title = "PCA Loadings Plot (Top 50 variables)",
+       x = "PC1 Loadings", y = "PC2 Loadings") +
+  theme_minimal()
+```
+
+## PCA-Class Models
+
+PCA-Class performs separate PCA models for each class to examine within-class variation:
+
+```{r pca-class, exercise=TRUE}
+# Split data by class
+myb76_data <- metabolomics_data[metabolomics_data$Class == "MYB76", nmr_vars]
+wt_data <- metabolomics_data[metabolomics_data$Class == "Wild_Type", nmr_vars]
+
+# Apply Pareto scaling to each class separately
+myb76_centered <- scale(myb76_data, center = TRUE, scale = FALSE)
+myb76_sds <- apply(myb76_data, 2, sd)
+myb76_pareto <- myb76_centered / sqrt(myb76_sds)
+
+wt_centered <- scale(wt_data, center = TRUE, scale = FALSE)
+wt_sds <- apply(wt_data, 2, sd)
+wt_pareto <- wt_centered / sqrt(wt_sds)
+
+# PCA for each class
+pca_myb76 <- prcomp(myb76_pareto, center = FALSE, scale. = FALSE)
+pca_wt <- prcomp(wt_pareto, center = FALSE, scale. = FALSE)
+
+# Summaries
+cat("MYB76 Class PCA:\n")
+summary(pca_myb76)
+
+cat("\n\nWild Type Class PCA:\n")
+summary(pca_wt)
+```
+
+### PCA-Class Scores Plots
+
+```{r pca-class-scores, exercise=TRUE}
+# MYB76 scores
+myb76_scores <- data.frame(
+  PC1 = pca_myb76$x[,1],
+  PC2 = pca_myb76$x[,2],
+  Sample_ID = metabolomics_data$Sample_ID[metabolomics_data$Class == "MYB76"],
+  Tree = metabolomics_data$Tree[metabolomics_data$Class == "MYB76"],
+  Internode = metabolomics_data$Internode[metabolomics_data$Class == "MYB76"]
+)
+
+p1 <- ggplot(myb76_scores, aes(x = PC1, y = PC2, color = Internode)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PCA-Class: MYB76 Only",
+       x = "PC1", y = "PC2") +
+  scale_color_gradient(low = "lightgreen", high = "darkgreen") +
+  theme_minimal()
+
+# Wild Type scores
+wt_scores <- data.frame(
+  PC1 = pca_wt$x[,1],
+  PC2 = pca_wt$x[,2],
+  Sample_ID = metabolomics_data$Sample_ID[metabolomics_data$Class == "Wild_Type"],
+  Tree = metabolomics_data$Tree[metabolomics_data$Class == "Wild_Type"],
+  Internode = metabolomics_data$Internode[metabolomics_data$Class == "Wild_Type"]
+)
+
+p2 <- ggplot(wt_scores, aes(x = PC1, y = PC2, color = Internode)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PCA-Class: Wild Type Only",
+       x = "PC1", y = "PC2") +
+  scale_color_gradient(low = "lightblue", high = "darkblue") +
+  theme_minimal()
+
+print(p1)
+print(p2)
+```
+
+### Quiz: PCA-Class Interpretation
+
+```{r quiz-pca-class}
+quiz(
+  question("What does PCA-Class reveal that regular PCA doesn't?",
+    answer("The separation between classes"),
+    answer("The variation within each class separately", correct = TRUE),
+    answer("The total variance in the data"),
+    answer("The number of variables"),
+    message = "PCA-Class models each group separately, revealing the internal structure and trends within each class (e.g., growth patterns)."
+  ),
+  question("Are the classes homogeneous based on PCA-Class results?",
+    answer("Yes, perfect homogeneity"),
+    answer("Reasonably homogeneous with some internal structure", correct = TRUE),
+    answer("Completely heterogeneous"),
+    answer("Cannot tell from PCA-Class"),
+    message = "Each class shows some internal variation (likely due to growth stage/internode), but samples are reasonably grouped."
+  ),
+  question("Based on PCA and PCA-Class, do you expect PLS-DA to work well?",
+    answer("No, classes are too similar"),
+    answer("Yes, there's clear separation to model", correct = TRUE),
+    answer("Cannot predict from PCA"),
+    answer("PLS-DA is unrelated to PCA results"),
+    message = "The partial separation in PCA and homogeneous classes in PCA-Class suggest PLS-DA should find a good discriminant model."
+  )
+)
+```
+
+## PLS-DA (Partial Least Squares Discriminant Analysis)
+
+PLS-DA is a supervised method that finds components maximizing the covariance between X (NMR data) and Y (class labels):
+
+```{r plsda-model, exercise=TRUE}
+# Prepare data for PLS-DA
+X <- as.matrix(metabolomics_data[, nmr_vars])
+Y <- as.numeric(metabolomics_data$Class) - 1  # Convert to 0/1
+
+# Apply Pareto scaling
+X_centered <- scale(X, center = TRUE, scale = FALSE)
+sds <- apply(X, 2, sd)
+X_pareto <- X_centered / sqrt(sds)
+
+# Fit PLS-DA model using plsr from pls package
+# Start with 5 components, will optimize later
+plsda_model <- plsr(Y ~ X_pareto, ncomp = 5, validation = "LOO")
+
+# Summary
+summary(plsda_model)
+
+# Calculate R2 and Q2 equivalents
+R2 <- R2(plsda_model)
+RMSEP_values <- RMSEP(plsda_model, estimate = "CV")
+
+cat("\nModel Quality Metrics:\n")
+print(R2)
+```
+
+```{r plsda-model-solution}
+X <- as.matrix(metabolomics_data[, nmr_vars])
+Y <- as.numeric(metabolomics_data$Class) - 1
+X_centered <- scale(X, center = TRUE, scale = FALSE)
+sds <- apply(X, 2, sd)
+X_pareto <- X_centered / sqrt(sds)
+plsda_model <- plsr(Y ~ X_pareto, ncomp = 5, validation = "LOO")
+summary(plsda_model)
+```
+
+### Determine Optimal Components
+
+```{r plsda-components, exercise=TRUE}
+# Plot validation results to determine optimal components
+plot(RMSEP(plsda_model), legendpos = "topright",
+     main = "RMSEP for PLS-DA Model")
+
+# Calculate Q2 (predictive ability)
+# Q2 is based on cross-validation
+PRESS <- plsda_model$validation$PRESS
+TSS <- sum((Y - mean(Y))^2)
+Q2 <- 1 - PRESS / TSS
+
+cat("\nQ2 values by component:\n")
+print(Q2)
+
+# Typically select components where Q2 > 0.5 and stops improving
+optimal_ncomp <- which(Q2 > 0.5)[1]
+if(is.na(optimal_ncomp)) optimal_ncomp <- 2
+
+cat(sprintf("\nSuggested optimal components: %d\n", optimal_ncomp))
+```
+
+### Quiz: PLS-DA Model Quality
+
+```{r quiz-plsda-quality}
+quiz(
+  question("How many components did the PLS-DA model use and why is this important?",
+    answer("Always use all components"),
+    answer("Use components with Q2 > 0.5", correct = TRUE),
+    answer("Always use exactly 2 components"),
+    answer("Use as many as possible"),
+    message = "Components should be selected based on cross-validation (Q2). Stop when Q2 decreases or becomes negative (overfitting)."
+  ),
+  question("What does Q2 represent in a PLS-DA model?",
+    answer("The percentage of variance explained"),
+    answer("The predictive ability based on cross-validation", correct = TRUE),
+    answer("The number of samples"),
+    answer("The correlation between variables"),
+    message = "Q2 indicates how well the model predicts new samples. Q2 > 0.5 is generally considered good for metabolomics."
+  ),
+  question("How much do you trust this PLS-DA model?",
+    answer("Complete trust - it's perfect"),
+    answer("Good trust if Q2 > 0.5 and validated", correct = TRUE),
+    answer("No trust - supervised methods always overfit"),
+    answer("Trust only R2 values"),
+    message = "Trust depends on cross-validation results (Q2), separation in scores plots, and biological validation. Q2 > 0.5 with good separation is encouraging."
+  )
+)
+```
+
+## PLS-DA Scores and Predictions
+
+```{r plsda-scores, exercise=TRUE}
+# Extract PLS-DA scores
+plsda_scores <- scores(plsda_model)[,1:2]  # First 2 components
+
+# Create scores dataframe
+plsda_scores_df <- data.frame(
+  LV1 = plsda_scores[,1],
+  LV2 = plsda_scores[,2],
+  Class = metabolomics_data$Class,
+  Sample_ID = metabolomics_data$Sample_ID,
+  Internode = metabolomics_data$Internode,
+  Tree = metabolomics_data$Tree
+)
+
+# PLS-DA scores plot
+ggplot(plsda_scores_df, aes(x = LV1, y = LV2, color = Class, shape = Class)) +
+  geom_point(size = 3, alpha = 0.7) +
+  labs(title = "PLS-DA Scores Plot",
+       x = "Latent Variable 1",
+       y = "Latent Variable 2") +
+  scale_color_manual(values = c("Wild_Type" = "#0072B2", "MYB76" = "#D55E00")) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+```{r plsda-predictions, exercise=TRUE}
+# Get predictions
+predictions <- predict(plsda_model, ncomp = optimal_ncomp)
+predicted_class <- ifelse(predictions > 0.5, "MYB76", "Wild_Type")
+true_class <- metabolomics_data$Class
+
+# Confusion matrix
+confusion_matrix <- table(Predicted = predicted_class, True = true_class)
+print(confusion_matrix)
+
+# Calculate accuracy
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+cat(sprintf("\nClassification Accuracy: %.1f%%\n", accuracy * 100))
+
+# Sensitivity and Specificity
+sensitivity <- confusion_matrix["MYB76", "MYB76"] / sum(confusion_matrix[, "MYB76"])
+specificity <- confusion_matrix["Wild_Type", "Wild_Type"] / sum(confusion_matrix[, "Wild_Type"])
+
+cat(sprintf("Sensitivity (MYB76): %.1f%%\n", sensitivity * 100))
+cat(sprintf("Specificity (Wild Type): %.1f%%\n", specificity * 100))
+```
+
+### Predictions with Confidence
+
+```{r plsda-confidence, exercise=TRUE}
+# Plot predictions with confidence intervals
+pred_df <- data.frame(
+  Sample = 1:nrow(metabolomics_data),
+  Predicted = as.numeric(predictions[,1,optimal_ncomp]),
+  True_Class = metabolomics_data$Class,
+  Sample_ID = metabolomics_data$Sample_ID
+)
+
+ggplot(pred_df, aes(x = Sample, y = Predicted, color = True_Class)) +
+  geom_point(size = 2) +
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "black") +
+  geom_hline(yintercept = c(0, 1), linetype = "dotted", alpha = 0.5) +
+  labs(title = "PLS-DA Predictions",
+       x = "Sample Index",
+       y = "Predicted Class (0 = WT, 1 = MYB76)",
+       color = "True Class") +
+  scale_color_manual(values = c("Wild_Type" = "#0072B2", "MYB76" = "#D55E00")) +
+  
