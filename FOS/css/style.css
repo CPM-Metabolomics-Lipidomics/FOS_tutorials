@@ -1,0 +1,31 @@
+/* CSS from Shiny, Rstudio, etc. took it from learnr pages. */
+
+body {
+  font-family: 'Source Sans', sans-serif;
+  font-weight: normal;
+  font-size: 14px;
+  color: #555555;
+} 
+
+p {
+  line-height: 1.6em;
+  margin-bottom: 1em; 
+}
+
+ul {
+  line-height: 2em;
+  list-style: disc outside none;
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+a {
+  color: #2fa4e7;
+  text-decoration: none;
+  background-color: transparent;
+}
+
+a:hover, a:focus {
+  color: #157ab5;
+  text-decoration: underline;
+}
