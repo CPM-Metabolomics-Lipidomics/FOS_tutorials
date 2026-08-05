@@ -2,11 +2,14 @@
 title: "Multivariate Data Analysis: IRIS Dataset"
 subtitle: "Principal Component Analysis with R"
 author: "Rico Derks, Aswin Verhoeven"
-output: 
+output:
   learnr::tutorial:
     progressive: true
     allow_skip: true
 runtime: shiny_prerendered
+tutorial:
+  id: "fos-2026-iris"
+  version: "1.0"
 ---
 
 ```{r setup, include=FALSE}
@@ -42,6 +45,36 @@ iris_no_setosa <- iris_data |>
   filter(Species != "setosa") |>
   droplevels()
 ```
+
+## How to use this tutorial
+
+Everything happens in your browser - you do not need R installed, and you cannot
+break anything. Nothing you type here touches your own computer or the data
+files.
+
+**The grey boxes are live R code.** Press **Run Code** to execute the code in a
+box and see the output appear underneath it. You are encouraged to change the
+code and run it again: change a colour, plot PC2 against PC3 instead of PC1
+against PC2, look at a different variable. Experimenting is the point.
+
+- **Run Code** - runs whatever is currently in the box
+- **Start Over** - puts the original code back if you get stuck
+- **Solution** - some exercises have this button, which shows one possible answer
+
+**The questions** are there to make you look at the output you just produced.
+Pick an answer and press **Submit Answer**; you will get an explanation either
+way, and the explanation is usually the most useful part. Read it even when you
+answered correctly.
+
+**Working through the tutorial.** Sections appear one at a time. Press
+**Continue** at the bottom of a section to move on. Your progress is remembered,
+so you can close the page and come back later. If you want a completely clean
+start, use the **Start Over** link at the bottom of the left-hand menu - note
+that this clears the whole tutorial, not just one exercise.
+
+One thing to keep in mind throughout: the code boxes run independently of each
+other. An object you create in one box is not automatically available in the
+next one, so each exercise sets up what it needs.
 
 ## Background
 

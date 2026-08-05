@@ -2,11 +2,14 @@
 title: "Multivariate Data Analysis: Food data set"
 subtitle: "Principal Component Analysis with R"
 author: "Rico Derks, Aswin Verhoeven"
-output: 
+output:
   learnr::tutorial:
     progressive: true
     allow_skip: true
 runtime: shiny_prerendered
+tutorial:
+  id: "fos-2026-food"
+  version: "1.0"
 ---
 
 ```{r setup, include=FALSE}
@@ -77,6 +80,24 @@ scores_df <- data.frame(
   Capitol_Latitude = food_imputed$Capitol_Latitude
 )
 ```
+
+## How to use this tutorial
+
+This works exactly like the IRIS tutorial, so if you have just finished that one
+you can go straight to the next section.
+
+Everything runs in your browser; you cannot break anything. The grey boxes are
+live R code: press **Run Code** to execute a box, **Start Over** to restore the
+original code, and **Solution** (where it is offered) to see one possible answer.
+You are encouraged to change the code and run it again.
+
+Answer the questions with **Submit Answer** and read the explanation that
+follows - it is usually the most useful part, also when you were right. Sections
+appear one at a time; press **Continue** to move on, and your progress is
+remembered if you close the page.
+
+Remember that each code box runs independently: an object created in one box is
+not automatically available in the next.
 
 ## Background
 
