@@ -9,13 +9,13 @@ The tutorials are separated by year.
 All tutorials are run from a Docker container running a Shiny server. To build the Docker container run:
 
 ```
-docker build -t FOS2026 .
+docker build -t fos-course2026 .
 ```
 
 Run the Docker container with (adjust port when needed):
 
 ```
-docker run -d -p 3838:3838 FOS2026
+docker run -d -p 3838:3838 fos-course2026
 ```
 
 # Usage
