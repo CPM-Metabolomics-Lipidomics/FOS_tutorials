@@ -12,8 +12,16 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean
 
 # Install R packages
-RUN R -e "install.packages(c('shiny', 'learnr', 'rmarkdown', 'tidyverse', 'plotly', 'corrplot', 'DT', 'factoextra', 'FactomineR', 'BiocManager', 'knitr', 'pls'))"
+RUN R -e "install.packages(c('shiny', 'learnr', 'rmarkdown', 'tidyverse', 'plotly', 'corrplot', 'DT', 'factoextra', 'gridExtra', 'BiocManager', 'knitr', 'pls'))"
 RUN R -e "BiocManager::install(c('pcaMethods', 'mixOmics'))"
+
+# install.packages() only WARNS about a package it cannot find (a typo in the
+# list above would produce an image whose tutorials die on startup), so verify
+# explicitly that everything the tutorials load is actually present.
+RUN R -e "pkgs <- c('shiny','learnr','rmarkdown','ggplot2','dplyr','tidyr','readxl','plotly','corrplot','DT','factoextra','gridExtra','knitr','pls','pcaMethods','mixOmics'); \
+          missing <- pkgs[!pkgs %in% rownames(installed.packages())]; \
+          if (length(missing)) stop('Missing packages: ', paste(missing, collapse=', ')); \
+          cat('All required packages present\n')"
 
 # Copy tutorials
 COPY FOS/ /srv/FOS/
