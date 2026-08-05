@@ -19,6 +19,7 @@ library(factoextra)
 library(FactoMineR)
 library(knitr)
 library(DT)
+library(tidyr)
 
 # Set up tutorial options
 tutorial_options(exercise.timelimit = 60)
@@ -31,9 +32,12 @@ iris_data <- iris |>
   mutate(ID = row_number()) |>
   select(ID, Species, Sepal.Length, Sepal.Width, Petal.Length, Petal.Width)
 
-# For exercises without setosa
+# For exercises without setosa.
+# droplevels() removes the now unused "setosa" level, otherwise it keeps
+# showing up as an empty entry in the plot legends.
 iris_no_setosa <- iris_data |>
-  filter(Species != "setosa")
+  filter(Species != "setosa") |>
+  droplevels()
 ```
 
 ## Background
@@ -261,8 +265,6 @@ ggplot(data = loadings_df,
 
 ```{r loadings-arrows, exercise=TRUE, exercise.setup='pca-basic'}
 # Create a biplot-style visualization
-library(factoextra)
-
 # Use fviz_pca_biplot for a comprehensive view
 fviz_pca_biplot(pca_result, 
                 col.ind = iris_data$Species,
@@ -301,10 +303,8 @@ quiz(
 Let's examine what happens when we remove the clearly separated setosa species:
 
 ```{r pca-no-setosa, exercise=TRUE, exercise.setup='pca-basic'}
-# making sure this is remembered
-pca_result <- pca_result
 # PCA without setosa
-pca_no_setosa <- prcomp(iris_no_setosa [,3:6], 
+pca_no_setosa <- prcomp(iris_no_setosa[, 3:6],
                         scale. = TRUE,
                         center = TRUE)
 
@@ -378,8 +378,6 @@ If multivariate methods don't provide clear separation, what univariate approach
 
 ```{r univariate-analysis, exercise=TRUE}
 # Boxplots for each variable
-library(tidyr)
-
 iris_long <- iris_data |>
   pivot_longer(cols = c(Sepal.Length, Sepal.Width, Petal.Length, Petal.Width),
                names_to = "Variable", values_to = "Value")
@@ -394,8 +392,6 @@ ggplot(iris_long, aes(x = Species, y = Value, fill = Species)) +
 
 ```{r correlation-analysis, exercise=TRUE}
 # Correlation analysis
-library(corrplot)
-
 # Calculate correlation matrix
 cor_matrix <- cor(iris_data[,3:6])
 

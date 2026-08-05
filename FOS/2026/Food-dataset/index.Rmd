@@ -32,6 +32,47 @@ food_data <- read.csv(
 # Store variable names for easy reference
 food_vars <- names(food_data)[5:ncol(food_data)]
 n_vars <- length(food_vars)
+
+# Imputed version, used by all exercises from the PCA section onwards.
+# (See the "Handling Missing Values" section for how this is done.)
+food_imputed <- food_data
+for (col in food_vars) {
+  food_imputed[[col]][is.na(food_imputed[[col]])] <- mean(food_imputed[[col]],
+                                                          na.rm = TRUE)
+}
+
+# Colours and labels for the geographic regions, used in several plots
+region_colors <- c("C" = "#E69F00", "S" = "#D55E00", "N" = "#0072B2",
+                   "U" = "#009E73", "X" = "#CC79A7")
+region_labels <- c("C" = "Central", "S" = "Southern", "N" = "Northern",
+                   "U" = "UK/Ireland", "X" = "Benelux")
+```
+
+```{r prep-pca}
+# Setup chunk: makes the PCA model available to the exercises below.
+# learnr runs each exercise in its own environment, so anything an exercise
+# needs has to come from the global setup chunk or from a setup chunk like
+# this one, referenced with the exercise.setup chunk option.
+# (Note: a setup chunk must NOT be named "<something>-setup" unless an
+# exercise with that exact name exists, so we use the "prep-" prefix.)
+pca_food <- prcomp(food_imputed[, food_vars],
+                   scale. = TRUE,
+                   center = TRUE)
+
+variance_explained <- pca_food$sdev^2
+total_variance <- sum(variance_explained)
+r2_values <- variance_explained / total_variance
+r2_cumulative <- cumsum(r2_values)
+```
+
+```{r prep-scores, exercise.setup="prep-pca"}
+scores_df <- data.frame(
+  PC1 = pca_food$x[, 1],
+  PC2 = pca_food$x[, 2],
+  Country = food_imputed$Country,
+  Geographic_Location = food_imputed$Geographic_Location,
+  Capitol_Latitude = food_imputed$Capitol_Latitude
+)
 ```
 
 ## Background
@@ -73,23 +114,23 @@ summary(food_data[, food_vars])
 str(food_data)
 
 # Count countries by geographic location
-table(food_data$Geographic.Location)
+table(food_data$Geographic_Location)
 
 # Geographic locations:
-# C = Central, S = Southern, N = Northern, W = Western
+# C = Central, S = Southern, N = Northern, U = UK/Ireland, X = Benelux
 ```
 
 <div id="data-structure-hint">
-**Hint:** The Geographic.Location variable groups countries: N = Northern Europe, S = Southern Europe, C = Central Europe, W = Western.
+**Hint:** The `Geographic_Location` variable groups the countries:
+C = Central Europe, S = Southern Europe, N = Northern Europe,
+U = UK/Ireland, X = Benelux.
 </div>
 
 ### Interactive Data Table
 
 ```{r data-table, exercise=TRUE}
 # Create an interactive table to explore the data
-library(DT)
-
-datatable(food_data, 
+datatable(food_data,
           options = list(pageLength = 10, scrollX = TRUE),
           caption = "European Food Consumption Data")
 ```
@@ -168,7 +209,7 @@ cat("Cumulative (PC1+PC2):", round(r2_cumulative[2]*100, 1), "%\n")
 
 ### Quiz: Model Quality
 
-```{r quiz-pca-quality}
+```{r quiz-pca-quality, echo=FALSE}
 quiz(
   question("Based on the PCA summary, how many principal components would you consider sufficient to describe the data?",
     answer("1 component"),
@@ -191,7 +232,7 @@ quiz(
 
 The scores plot shows how countries are positioned based on their food consumption patterns:
 
-```{r scores-plot, exercise=TRUE}
+```{r scores-plot, exercise=TRUE, exercise.setup="prep-pca"}
 # Prepare scores data
 scores_df <- data.frame(
   PC1 = pca_food$x[,1],
@@ -209,12 +250,8 @@ ggplot(scores_df, aes(x = PC1, y = PC2, color = Geographic_Location, label = Cou
        x = paste0("PC1 (", round(r2_values[1]*100, 1), "% variance)"),
        y = paste0("PC2 (", round(r2_values[2]*100, 1), "% variance)"),
        color = "Region") +
-  scale_color_manual(values = c("C" = "#E69F00", "S" = "#D55E00", 
-                                 "N" = "#0072B2", "U" = "#009E73", 
-                                 "X" = "#CC79A7"),
-                     labels = c("C" = "Central", "S" = "Southern", 
-                                "N" = "Northern", "U" = "UK/Ireland", 
-                                "X" = "Benelux")) +
+  scale_color_manual(values = region_colors,
+                     labels = region_labels) +
   theme_minimal() +
   theme(legend.position = "bottom")
 ```
@@ -233,16 +270,16 @@ ggplot(scores_df, aes(x = PC1, y = PC2, color = Geographic_Location, label = Cou
   labs(title = "PCA Scores Plot",
        x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
        y = paste0("PC2 (", round(r2_values[2]*100, 1), "%)")) +
+  scale_color_manual(values = region_colors,
+                     labels = region_labels) +
   theme_minimal()
 ```
 
 ### Interactive Scores Plot
 
-```{r interactive-scores, exercise=TRUE}
+```{r interactive-scores, exercise=TRUE, exercise.setup="prep-scores"}
 # Create interactive plot with plotly
-library(plotly)
-
-p <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Geographic_Location, 
+p <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Geographic_Location,
                            text = paste("Country:", Country))) +
   geom_point(size = 4, alpha = 0.7) +
   geom_text(aes(label = Country), vjust = -0.7, size = 3, show.legend = FALSE) +
@@ -250,6 +287,8 @@ p <- ggplot(scores_df, aes(x = PC1, y = PC2, color = Geographic_Location,
        x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
        y = paste0("PC2 (", round(r2_values[2]*100, 1), "%)"),
        color = "Region") +
+  scale_color_manual(values = region_colors,
+                     labels = region_labels) +
   theme_minimal()
 
 ggplotly(p, tooltip = c("text", "colour"))
@@ -257,7 +296,7 @@ ggplotly(p, tooltip = c("text", "colour"))
 
 ### Quiz: Identifying Clusters
 
-```{r quiz-clusters}
+```{r quiz-clusters, echo=FALSE}
 quiz(
   question("Are there clear clusters present in the scores plot?",
     answer("No clusters"),
@@ -280,7 +319,7 @@ quiz(
 
 The loadings plot shows which food items contribute most to the patterns we see:
 
-```{r loadings-plot, exercise=TRUE}
+```{r loadings-plot, exercise=TRUE, exercise.setup="prep-pca"}
 # Prepare loadings data
 loadings_df <- data.frame(
   Variable = rownames(pca_food$rotation),
@@ -303,7 +342,7 @@ ggplot(loadings_df, aes(x = PC1, y = PC2)) +
 
 ### Identify Top Contributing Variables
 
-```{r top-loadings, exercise=TRUE}
+```{r top-loadings, exercise=TRUE, exercise.setup="prep-pca"}
 # Find variables with strongest loadings on PC1
 pc1_loadings <- sort(abs(pca_food$rotation[,1]), decreasing = TRUE)
 cat("Top 5 variables contributing to PC1:\n")
@@ -323,7 +362,7 @@ print(sort(pca_food$rotation[,1], decreasing = FALSE)[1:5])
 
 ### Quiz: Interpreting Loadings
 
-```{r quiz-loadings}
+```{r quiz-loadings, echo=FALSE}
 quiz(
   question("What food items are causing the main clustering patterns in the scores plot?",
     answer("Coffee and tea only"),
@@ -339,7 +378,7 @@ quiz(
 
 Let's examine PC1 vs PC3 to understand other patterns:
 
-```{r scores-pc1-pc3, exercise=TRUE}
+```{r scores-pc1-pc3, exercise=TRUE, exercise.setup="prep-pca"}
 # Prepare scores data for PC1 vs PC3
 scores_df_pc3 <- data.frame(
   PC1 = pca_food$x[,1],
@@ -356,19 +395,15 @@ ggplot(scores_df_pc3, aes(x = PC1, y = PC3, color = Geographic_Location, label =
        x = paste0("PC1 (", round(r2_values[1]*100, 1), "%)"),
        y = paste0("PC3 (", round(r2_values[3]*100, 1), "%)"),
        color = "Region") +
-  scale_color_manual(values = c("C" = "#E69F00", "S" = "#D55E00", 
-                                 "N" = "#0072B2", "U" = "#009E73", 
-                                 "X" = "#CC79A7"),
-                     labels = c("C" = "Central", "S" = "Southern", 
-                                "N" = "Northern", "U" = "UK/Ireland", 
-                                "X" = "Benelux")) +
+  scale_color_manual(values = region_colors,
+                     labels = region_labels) +
   theme_minimal() +
   theme(legend.position = "bottom")
 ```
 
 ### PC3 Loadings
 
-```{r loadings-pc3, exercise=TRUE}
+```{r loadings-pc3, exercise=TRUE, exercise.setup="prep-pca"}
 # Examine PC3 loadings
 loadings_pc3 <- data.frame(
   Variable = rownames(pca_food$rotation),
@@ -421,7 +456,7 @@ ggplot(subset_long, aes(x = Country, y = Percentage, fill = Food)) +
 
 ### Quiz: PC1 vs PC3 Interpretation
 
-```{r quiz-pc3}
+```{r quiz-pc3, echo=FALSE}
 quiz(
   question("What separates England and Ireland from the rest of Europe on PC1 vs PC3?",
     answer("Their high tea consumption", correct = TRUE),
@@ -444,16 +479,12 @@ quiz(
 
 ### Biplot - Scores and Loadings Together
 
-```{r biplot, exercise=TRUE}
+```{r biplot, exercise=TRUE, exercise.setup="prep-pca"}
 # Create a biplot showing both scores and loadings
-library(factoextra)
-
 fviz_pca_biplot(pca_food,
                 label = "var",
                 col.ind = food_imputed$Geographic_Location,
-                palette = c("C" = "#E69F00", "S" = "#D55E00", 
-                           "N" = "#0072B2", "U" = "#009E73", 
-                           "X" = "#CC79A7"),
+                palette = region_colors,
                 addEllipses = FALSE,
                 col.var = "black",
                 repel = TRUE,
@@ -464,17 +495,15 @@ fviz_pca_biplot(pca_food,
 
 ### Contribution of Variables
 
-```{r variable-contribution, exercise=TRUE}
+```{r variable-contribution, exercise=TRUE, exercise.setup="prep-pca"}
 # Visualize variable contributions to PC1 and PC2
-library(factoextra)
-
 # Contributions to PC1
 fviz_contrib(pca_food, choice = "var", axes = 1, top = 10) +
   labs(title = "Top 10 Variables Contributing to PC1") +
   theme_minimal()
 ```
 
-```{r variable-contribution-pc2, exercise=TRUE}
+```{r variable-contribution-pc2, exercise=TRUE, exercise.setup="prep-pca"}
 # Contributions to PC2
 fviz_contrib(pca_food, choice = "var", axes = 2, top = 10) +
   labs(title = "Top 10 Variables Contributing to PC2") +
@@ -487,8 +516,6 @@ If multivariate methods don't provide sufficient clarity, what alternative appro
 
 ```{r univariate-viz, exercise=TRUE}
 # Heatmap of food consumption by country
-library(tidyr)
-
 # Select a subset of interesting foods
 foods_subset <- c("Garlic", "Olive_Oil", "Tea", "Ground_Coffee", 
                   "Butter", "Margarine", "Frozen_Vegetables")
