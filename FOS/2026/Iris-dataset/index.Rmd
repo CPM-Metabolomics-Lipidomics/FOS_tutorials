@@ -11,6 +11,9 @@ runtime: shiny_prerendered
 
 ```{r setup, include=FALSE}
 library(learnr)
+# pcaMethods is loaded first on purpose: it masks a few base/stats functions,
+# and loading the tidyverse packages afterwards restores the ones we need.
+library(pcaMethods)
 library(ggplot2)
 library(dplyr)
 library(plotly)
@@ -113,6 +116,71 @@ cat("PC1:", round(r2_cumulative[1]*100, 1), "%\n")
 cat("PC1+PC2:", round(r2_cumulative[2]*100, 1), "%\n")
 ```
 
+### Model quality: R² and Q²
+
+In SIMCA the first thing you look at is the "Summary of Fit", which reports two
+numbers per component:
+
+- **R²cum** - the cumulative fraction of the data *described* by the model.
+  This is simply the cumulative variance explained that we calculated above.
+  R² can only go up when you add components, so on its own it says very little.
+- **Q²cum** - the cumulative fraction of the data that the model can
+  *predict*. Q² is obtained by cross-validation: the observations are split
+  into 7 groups, one group is left out, a new model is built on the remaining
+  6/7, and the left-out observations are then predicted. This is repeated until
+  every observation has been left out once. The closer the predictions are to
+  the real values, the higher Q².
+
+The important difference: **R² always increases when you add a component, but
+Q² does not**. Once a component starts describing noise instead of structure,
+Q² stops rising and begins to fall. That is how SIMCA's "Autofit" decides how
+many components to keep.
+
+R does not report Q² by default, but the `pcaMethods` package can calculate it:
+
+```{r r2-q2, exercise=TRUE, exercise.setup='pca-basic'}
+# pcaMethods has its own pca() function which can report both R2 and Q2
+set.seed(2026)  # cross-validation splits the data randomly
+
+X <- as.matrix(iris_data[, 3:6])
+
+pca_cv <- pca(X,
+              method = "svd",
+              nPcs = 4,
+              scale = "uv",     # unit variance, same as scale. = TRUE
+              center = TRUE)
+
+# R2cum: cumulative variance described
+r2cum <- R2cum(pca_cv)
+
+# Q2: cumulative predictive ability, 7-fold cross-validation (as SIMCA does)
+q2cum <- Q2(pca_cv, X, fold = 7, verbose = FALSE)
+
+data.frame(
+  Component = paste0("PC", seq_along(r2cum)),
+  R2cum = round(r2cum, 3),
+  Q2cum = c(round(q2cum, 3), rep(NA, length(r2cum) - length(q2cum)))
+)
+```
+
+```{r r2-q2-solution}
+set.seed(2026)
+X <- as.matrix(iris_data[, 3:6])
+pca_cv <- pca(X, method = "svd", nPcs = 4, scale = "uv", center = TRUE)
+r2cum <- R2cum(pca_cv)
+q2cum <- Q2(pca_cv, X, fold = 7, verbose = FALSE)
+
+data.frame(
+  Component = paste0("PC", seq_along(r2cum)),
+  R2cum = round(r2cum, 3),
+  Q2cum = c(round(q2cum, 3), rep(NA, length(r2cum) - length(q2cum)))
+)
+```
+
+Note that R's cross-validation scheme is not identical to SIMCA's, so the Q²
+values will be close to but not exactly the same as the ones you would get in
+SIMCA.
+
 ### Quiz: Understanding PCA Quality
 
 ```{r quiz-pca-quality, echo=FALSE}
@@ -129,7 +197,15 @@ quiz(
     answer("4 components, because there are 4 variables", correct = TRUE),
     answer("150 components, because there are 150 observations"),
     answer("Unlimited components"),
-    message = "PCA can calculate at most min(n-1, p) components, where n is observations and p is variables. With 4 variables, we can have maximum 4 components."
+    message = "PCA can calculate at most min(n-1, p) components, where n is observations and p is variables. With 4 variables, we can have maximum 4 components. Notice in the table above that R2cum reaches 1.000 at the fourth component: the model then describes the data completely and there is nothing left to model."
+  ),
+  question("The model has R2cum = 0.96 and Q2cum = 0.71 after two components. What does this tell you?",
+    answer("Two components describe 96% of the data and also predict it well: a good model", correct = TRUE),
+    answer("The model is overfitted, because R2 is much higher than Q2"),
+    answer("The model is useless, because Q2 is below 1"),
+    answer("Nothing, R2 and Q2 cannot be compared"),
+    message = "R2 tells you how much is described, Q2 how much can be predicted. A high R2 with a high Q2 means the model captures real structure rather than noise. In metabolomics a Q2 of around 0.5 is already considered good, so 0.71 is high. R2 is always larger than Q2; only a LARGE gap between them is a warning sign.",
+    correct = "Correct. Note that R2 and Q2 together still say nothing about outliers - we look at those next."
   )
 )
 ```
@@ -224,9 +300,127 @@ quiz(
 )
 ```
 
+## Outliers: Hotelling's T² and DModX
+
+R² and Q² tell you how much of the data the model describes and predicts, but
+they say nothing about *individual observations*. A single strange sample can
+distort a model without making R² or Q² look bad. SIMCA therefore offers two
+diagnostic plots, and you can reproduce both in R.
+
+**Hotelling's T²** finds *strong* outliers: observations that lie far from the
+centre **inside** the model plane. In a scores plot this is drawn as a
+confidence ellipse - anything outside it is a candidate strong outlier.
+
+```{r hotelling, exercise=TRUE, exercise.setup='pca-basic'}
+scores_df <- data.frame(
+  PC1 = pca_result$x[, 1],
+  PC2 = pca_result$x[, 2],
+  Species = iris_data$Species,
+  ID = iris_data$ID
+)
+
+# Hotelling's T2 for the first two components
+n <- nrow(scores_df)
+A <- 2                                    # number of components
+sd_pc <- apply(pca_result$x[, 1:A], 2, sd)
+
+scores_df$T2 <- rowSums((pca_result$x[, 1:A] / rep(sd_pc, each = n))^2)
+
+# 95% critical value
+t2_crit <- (A * (n - 1) * (n + 1)) / (n * (n - A)) * qf(0.95, A, n - A)
+
+# The ellipse itself: semi-axes are sd * sqrt(critical value)
+theta <- seq(0, 2 * pi, length.out = 200)
+ellipse <- data.frame(
+  PC1 = sd_pc[1] * sqrt(t2_crit) * cos(theta),
+  PC2 = sd_pc[2] * sqrt(t2_crit) * sin(theta)
+)
+
+ggplot(scores_df, aes(x = PC1, y = PC2)) +
+  geom_path(data = ellipse, colour = "grey40", linetype = "dashed") +
+  geom_point(aes(colour = Species), size = 3, alpha = 0.7) +
+  geom_text(data = subset(scores_df, T2 > t2_crit),
+            aes(label = ID), vjust = -0.9, size = 3) +
+  labs(title = "Scores plot with 95% Hotelling's T² ellipse",
+       subtitle = "Labelled points lie outside the ellipse") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+cat("Critical value (95%):", round(t2_crit, 2), "\n")
+cat("Observations outside the ellipse:", sum(scores_df$T2 > t2_crit), "of", n, "\n")
+```
+
+**DModX** (Distance to the Model in X) finds *moderate* outliers: observations
+that are not extreme within the plane, but lie far *away* from it, meaning the
+model describes them poorly.
+
+```{r dmodx, exercise=TRUE, exercise.setup='pca-basic'}
+X <- as.matrix(iris_data[, 3:6])
+
+pca_cv <- pca(X, method = "svd", nPcs = 2, scale = "uv", center = TRUE)
+
+dmodx <- DModX(pca_cv, X)
+
+dmodx_df <- data.frame(
+  ID = iris_data$ID,
+  Species = iris_data$Species,
+  DModX = as.numeric(dmodx)
+)
+
+# The normalised DModX is scaled so that 1 is the average distance to the
+# model. A common rule of thumb is that an observation is only worth calling
+# an outlier once it is about twice that.
+ggplot(dmodx_df, aes(x = ID, y = DModX, fill = Species)) +
+  geom_col() +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  geom_hline(yintercept = 2, linetype = "dotted", colour = "red") +
+  labs(title = "DModX per observation",
+       subtitle = "Dashed = model average (1), red dotted = rule-of-thumb limit (2)",
+       y = "DModX (normalised)") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Which observations are furthest from the model?
+head(dmodx_df[order(-dmodx_df$DModX), ], 5)
+```
+
+### Quiz: Outlier diagnostics
+
+```{r quiz-outliers, echo=FALSE}
+quiz(
+  question("What is the difference between Hotelling's T² and DModX?",
+    answer("T² finds observations far from the centre within the model plane; DModX finds observations far away from the plane", correct = TRUE),
+    answer("They measure exactly the same thing"),
+    answer("T² is for variables, DModX is for observations"),
+    answer("T² is calculated on the loadings, DModX on the scores"),
+    message = "T² measures distance from the origin INSIDE the model (strong outliers, visible in the scores plot). DModX measures the residual, i.e. the distance from the model plane (moderate outliers, invisible in a scores plot). You need both."
+  ),
+  question("A few observations lie just outside the 95% T² ellipse. Should you remove them?",
+    answer("No - investigate them first; being outside a 95% ellipse is expected for about 5% of observations", correct = TRUE),
+    answer("Yes, always remove anything outside the ellipse"),
+    answer("Yes, but only if they belong to setosa"),
+    answer("It makes no difference either way"),
+    message = "By definition roughly 5% of the observations fall outside a 95% ellipse even when nothing is wrong - with 150 flowers you expect about 7, and here there are 6. A common rule of thumb for DModX is that a value needs to be about twice the model average before you call it an outlier, and even then you should check the raw data first. Removing observations just because they are extreme is a good way to fool yourself."
+  )
+)
+```
+
 ## Loadings Plot
 
 The loadings plot shows how the original variables contribute to each principal component:
+
+<div class="alert alert-info">
+**A word of warning about signs.** The direction of a principal component is
+arbitrary. A component and its mirror image describe exactly the same model, so
+different software - or even the same software on a different computer - may
+flip PC1 or PC2 upside down. Your plot may therefore be mirrored compared with
+the screenshots in the SIMCA handout or with a fellow student's screen.
+
+What is *not* arbitrary is the **relative** position of things: which variables
+sit together, which sit on opposite sides of the origin, and how far they are
+from the centre. Always interpret loadings relative to each other, never as
+"positive is good, negative is bad".
+</div>
 
 ```{r loadings-plot, exercise=TRUE, exercise.setup='pca-basic'}
 # Create loadings plot
@@ -289,11 +483,11 @@ quiz(
     message = "The loadings plot shows how each original variable (Sepal.Length, Sepal.Width, etc.) contributes to the principal components."
   ),
   question("Based on the loadings plot, which variables are most important for separating the clusters in the scores plot?",
-    answer("Sepal measurements only"),
-    answer("Petal measurements only"),
     answer("Petal.Length and Petal.Width", correct = TRUE),
-    answer("All variables equally"),
-    message = "Petal.Length and Petal.Width have the strongest loadings on PC1, which explains the most variance and separates the species most clearly."
+    answer("Sepal.Length and Sepal.Width"),
+    answer("Sepal.Width on its own"),
+    answer("All four variables equally"),
+    message = "PC1 carries 73% of the variance and does most of the separating. Its loadings are Petal.Length 0.58, Petal.Width 0.57, Sepal.Length 0.52 and Sepal.Width -0.27. The two petal measurements are the largest, and note that Sepal.Width has the opposite sign: setosa has the smallest petals but the widest sepals of the three species."
   )
 )
 ```
@@ -356,18 +550,18 @@ print(round(pca_no_setosa$rotation[,1:2], 3))
 ```{r quiz-comparison, echo=FALSE}
 quiz(
   question("When setosa is removed, what happens to the separation between versicolor and virginica?",
-    answer("It becomes much clearer"),
-    answer("It becomes somewhat clearer", correct = TRUE),
-    answer("No change"),
+    answer("It becomes somewhat clearer, but the two species still overlap", correct = TRUE),
+    answer("They separate completely"),
+    answer("No change at all"),
     answer("It becomes less clear"),
-    message = "Removing setosa does help reveal the more subtle differences between versicolor and virginica, though they remain more similar to each other than to setosa."
+    message = "Setosa no longer dominates the model, so the axes now describe the remaining two species. But look carefully at the scores plot: there is still substantial overlap between versicolor and virginica. PCA is unsupervised - it looks for the largest variance, not for the difference between your groups, and there is no guarantee those are the same thing."
   ),
-  question("What is the main variable distinguishing versicolor from virginica?",
-    answer("Sepal.Width"),
-    answer("Sepal.Length"),
-    answer("Petal.Length", correct = TRUE),
-    answer("They cannot be distinguished"),
-    message = "Looking at the loadings and scores plots, Petal.Length appears to be the primary variable separating these two species along PC1."
+  question("Look at the loadings of the model without setosa. How would you best describe PC1?",
+    answer("A general 'size' axis: petal length, petal width and sepal length all load strongly in the same direction", correct = TRUE),
+    answer("An axis driven by Sepal.Width alone"),
+    answer("An axis contrasting petal measurements against sepal measurements"),
+    answer("An axis with no sensible interpretation"),
+    message = "Without setosa, PC1 covers 73.9% of the variance and all four variables load in the SAME direction, with magnitudes Petal.Length 0.54, Petal.Width 0.51, Sepal.Length 0.51 and Sepal.Width 0.44. (Whether R prints these as positive or negative is arbitrary - only the relative signs matter.) So PC1 is essentially overall flower size, with the three largest contributions coming from petal length, petal width and sepal length. Virginica flowers are simply bigger than versicolor ones, which is why no single variable separates them cleanly."
   )
 )
 ```
@@ -375,6 +569,19 @@ quiz(
 ## Alternative Approaches
 
 If multivariate methods don't provide clear separation, what univariate approaches could you use?
+
+```{r quiz-univariate, echo=FALSE}
+question("Suppose PCA does not separate versicolor from virginica well enough. Which univariate approaches could you use instead? (select all that apply)",
+  answer("A t-test per variable, with a correction for multiple testing", correct = TRUE),
+  answer("A one-way ANOVA per variable when you have more than two groups", correct = TRUE),
+  answer("Simply pick the variable with the largest PC1 loading and report it without further testing"),
+  answer("Nothing - if PCA fails there is no alternative"),
+  type = "multiple",
+  message = "The standard fallback is to go variable by variable: a t-test for two groups, or a one-way ANOVA when there are three or more. Because you then perform one test per variable, you must correct for multiple testing (for example Bonferroni or Benjamini-Hochberg), otherwise you will find 'significant' differences by chance alone. With only 4 variables that is a minor issue, but in the NMR tutorial you will have 655 of them, and there it matters a great deal."
+)
+```
+
+The boxplots below are the visual version of exactly that univariate comparison:
 
 ```{r univariate-analysis, exercise=TRUE}
 # Boxplots for each variable
@@ -408,8 +615,10 @@ corrplot(cor_matrix, method = "circle", type = "upper",
 2. **Scores vs. Loadings**: 
    - Scores show where observations lie in PC space
    - Loadings show how original variables contribute to PCs
-3. **Model Quality**: High R² values (>90%) indicate good model fit
-4. **Biological Interpretation**: Petal measurements are key distinguishing features of iris species
+3. **Model Quality**: R² tells you how much is *described*, Q² (from cross-validation) how much can be *predicted*. R² always rises when you add components; Q² does not, and that is what tells you when to stop. Here R²cum = 0.96 and Q²cum = 0.71 after two components.
+4. **Diagnostics**: R² and Q² say nothing about individual observations. Hotelling's T² finds strong outliers within the model plane, DModX finds observations lying far from it. Always look at both before trusting a model.
+5. **Sign conventions**: the direction of a component is arbitrary; interpret loadings relative to each other, not by their absolute sign.
+6. **Biological Interpretation**: Petal measurements are key distinguishing features of iris species
 
 ### Practice Exercise
 

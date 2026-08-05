@@ -11,6 +11,9 @@ runtime: shiny_prerendered
 
 ```{r setup, include=FALSE}
 library(learnr)
+# pcaMethods is loaded first on purpose: it masks a few base/stats functions,
+# and loading the tidyverse packages afterwards restores the ones we need.
+library(pcaMethods)
 library(ggplot2)
 library(dplyr)
 library(plotly)
@@ -167,6 +170,43 @@ for(col in food_vars) {
 cat("\nUsing imputed dataset with all", nrow(food_imputed), "countries")
 ```
 
+#### Why SIMCA did not ask you to do this
+
+If you ran this exercise in SIMCA, you never had to choose between deleting and
+imputing: SIMCA simply kept all 16 countries. That is because SIMCA fits its PCA
+models with the **NIPALS** algorithm, which works one component at a time and
+can just skip the missing cells while it iterates. `prcomp()` cannot do that -
+it needs a complete matrix - which is why we had to patch the holes first.
+
+`pcaMethods` does give you NIPALS in R, so we can check whether our imputation
+changed anything:
+
+```{r nipals-compare, exercise=TRUE}
+# Original data, missing values and all
+X_raw <- as.matrix(food_data[, food_vars])
+rownames(X_raw) <- food_data$Country
+
+# NIPALS handles the NAs directly, like SIMCA does
+pca_nipals <- pca(X_raw, method = "nipals", nPcs = 3,
+                  scale = "uv", center = TRUE)
+
+# Compare with the mean-imputed version
+X_imp <- as.matrix(food_imputed[, food_vars])
+pca_imp <- pca(X_imp, method = "svd", nPcs = 3, scale = "uv", center = TRUE)
+
+data.frame(
+  Component = paste0("PC", 1:3),
+  R2cum_NIPALS = round(R2cum(pca_nipals), 3),
+  R2cum_imputed = round(R2cum(pca_imp), 3)
+)
+```
+
+The two are practically identical. With only 3 missing values out of 320, mean
+imputation was harmless here - but that is a conclusion you should *check*
+rather than assume. If a variable were missing for half of the countries,
+replacing those values by the mean would quietly invent structure that is not
+in the data.
+
 ### Performing PCA
 
 ```{r pca-basic, exercise=TRUE}
@@ -207,23 +247,68 @@ cat("PC2:", round(r2_values[2]*100, 1), "%\n")
 cat("Cumulative (PC1+PC2):", round(r2_cumulative[2]*100, 1), "%\n")
 ```
 
+### Model quality: R² and Q²
+
+The variance explained above is SIMCA's **R²cum**. On its own it is not enough
+to judge a model, because R² can only ever increase when you add a component.
+**Q²cum** is the cross-validated counterpart: the observations are split into 7
+groups, each group is left out in turn, and the model built on the rest is used
+to predict it. Q² therefore measures how much the model can *predict*, not just
+describe - and unlike R², it can go **down** when a component starts fitting
+noise.
+
+```{r r2-q2, exercise=TRUE}
+set.seed(2026)  # cross-validation splits the data randomly
+
+X <- as.matrix(food_imputed[, food_vars])
+rownames(X) <- food_imputed$Country
+
+pca_cv <- pca(X, method = "svd", nPcs = 5, scale = "uv", center = TRUE)
+
+r2cum <- R2cum(pca_cv)
+q2cum <- Q2(pca_cv, X, fold = 7, verbose = FALSE)
+
+data.frame(
+  Component = paste0("PC", seq_along(r2cum)),
+  R2cum = round(r2cum, 3),
+  Q2cum = round(q2cum[seq_along(r2cum)], 3)
+)
+```
+
+Look carefully at the two columns. R²cum climbs steadily, but Q²cum peaks
+around the third component and then falls away. That is exactly why SIMCA's
+"Autofit" stops at 3 components for this data set.
+
+Note that with only 16 countries the cross-validation is noisy, so your Q²
+values will shift a little every time the random split changes. The *pattern* -
+low values throughout, peaking at 3 components - is stable; the exact numbers
+are not.
+
 ### Quiz: Model Quality
 
 ```{r quiz-pca-quality, echo=FALSE}
 quiz(
   question("Based on the PCA summary, how many principal components would you consider sufficient to describe the data?",
     answer("1 component"),
-    answer("2 components", correct = TRUE),
-    answer("3 components"),
+    answer("2 components"),
+    answer("3 components", correct = TRUE),
     answer("All 20 components"),
-    message = "The first two components typically explain around 50-60% of the variance, which is reasonable for this type of data. Adding a third component helps capture more nuance."
+    message = "PC1 explains 31.3% and PC2 19.2%, so the first two components together reach only 50.5%. PC3 adds another 13.7%, bringing the total to 64.2%. That is why we will also look at PC1 vs PC3 later in this tutorial: PC3 still contains real structure. SIMCA's 'Autofit' also selects 3 components for this data set."
   ),
   question("What can you say about the quality of this PCA model compared to the IRIS dataset?",
     answer("Much better - higher R²"),
     answer("About the same"),
     answer("Not as good - lower R²", correct = TRUE),
     answer("Cannot compare different datasets"),
-    message = "Food consumption data is more complex and variable than flower measurements, so we expect lower R² values. This is normal for behavioral/social data."
+    message = "For IRIS, two components already covered 95.8% of the variance; here two components reach only 50.5%. Food consumption data is more complex and variable than flower measurements, so we expect lower R² values. This is normal for behavioural/social data."
+  ),
+  question("Q²cum for this model never rises above about 0.2, and starts dropping after the third component. What does that mean?",
+    answer("The model describes some real structure, but its predictive ability is poor", correct = TRUE),
+    answer("The model is excellent, because Q² is positive"),
+    answer("The model is broken and the results cannot be interpreted at all"),
+    answer("Q² is irrelevant for PCA"),
+    message = "Compare this with IRIS, where Q²cum reached 0.71. A Q² of around 0.15 means the model captures a genuine but weak pattern: you can use it to explore and to generate hypotheses about which countries resemble each other, but you should not expect it to predict a new country's shopping basket. The fact that Q² falls after the third component is the signal to stop adding components - the fourth and fifth are fitting noise.",
+    correct = "Correct - and note that R² alone would never have told you this. R² keeps climbing all the way to component 5."
   )
 )
 ```
@@ -303,19 +388,123 @@ quiz(
     answer("Yes, some regional patterns", correct = TRUE),
     answer("Perfect separation by region"),
     answer("Only 2 distinct clusters"),
-    message = "You can see some regional groupings, particularly Northern European countries clustering together, and Mediterranean countries showing similarity."
+    message = "Colouring by geographic location reveals roughly three groups: the Northern countries (Sweden, Denmark, Norway, Finland), the Southern countries (Portugal, Italy, Spain, and Austria alongside them), and the rest. The groups overlap, so this is a tendency rather than a clean separation."
   ),
-  question("Which countries appear most different from the others?",
+  question("Which two countries lie furthest apart in the PC1 vs PC2 scores plot?",
+    answer("Portugal and Sweden", correct = TRUE),
     answer("Germany and France"),
-    answer("England and Ireland", correct = TRUE),
-    answer("Sweden and Norway"),
-    answer("Portugal and Spain"),
-    message = "England and Ireland (UK region) show distinctive food consumption patterns, separating them from continental Europe."
+    answer("England and Ireland"),
+    answer("Norway and Denmark"),
+    message = "Portugal sits at the far negative end of PC1 (-4.6) and Sweden at the far positive end of both PC1 (3.2) and PC2 (4.2): they are the two poles of the Mediterranean-versus-Nordic contrast. Note that England and Ireland are NOT extreme here (Ireland sits almost exactly at PC1 = 0). They only stand out once we look at PC3, later in this tutorial."
+  )
+)
+```
+
+## Outliers: Hotelling's T² and DModX
+
+Before interpreting the loadings, check whether any single country is distorting
+the model. **Hotelling's T²** finds strong outliers lying far from the centre
+*within* the model plane, drawn as a confidence ellipse on the scores plot.
+**DModX** finds observations lying far *away* from the plane, which a scores
+plot cannot show you at all.
+
+```{r outliers, exercise=TRUE, exercise.setup="prep-scores"}
+n <- nrow(scores_df)
+A <- 2
+sd_pc <- apply(pca_food$x[, 1:A], 2, sd)
+
+scores_df$T2 <- rowSums((pca_food$x[, 1:A] / rep(sd_pc, each = n))^2)
+t2_crit <- (A * (n - 1) * (n + 1)) / (n * (n - A)) * qf(0.95, A, n - A)
+
+theta <- seq(0, 2 * pi, length.out = 200)
+ellipse <- data.frame(
+  PC1 = sd_pc[1] * sqrt(t2_crit) * cos(theta),
+  PC2 = sd_pc[2] * sqrt(t2_crit) * sin(theta)
+)
+
+ggplot(scores_df, aes(x = PC1, y = PC2)) +
+  geom_path(data = ellipse, colour = "grey40", linetype = "dashed") +
+  geom_point(aes(colour = Geographic_Location), size = 4, alpha = 0.8) +
+  geom_text(aes(label = Country), vjust = -0.9, size = 3) +
+  scale_color_manual(values = region_colors, labels = region_labels) +
+  labs(title = "Scores plot with 95% Hotelling's T² ellipse",
+       colour = "Region") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+outside <- scores_df$Country[scores_df$T2 > t2_crit]
+cat("Critical value (95%):", round(t2_crit, 2), "\n")
+cat("Countries outside the ellipse:",
+    if (length(outside) == 0) "none" else paste(outside, collapse = ", "), "\n")
+
+# The two most extreme countries, even though they stay inside:
+head(scores_df[order(-scores_df$T2), c("Country", "T2")], 3)
+```
+
+Nothing falls outside the ellipse. That is worth pausing on: Sweden (T² = 6.3)
+and Portugal (T² = 3.7) are clearly the most extreme countries - the same two
+poles you identified in the scores plot earlier - yet with only 16 observations
+the 95% ellipse is so wide that neither crosses it. A small data set has very
+little power to flag outliers, so the absence of a flag is not evidence that
+everything is fine.
+
+```{r dmodx, exercise=TRUE}
+X <- as.matrix(food_imputed[, food_vars])
+rownames(X) <- food_imputed$Country
+
+pca_cv <- pca(X, method = "svd", nPcs = 3, scale = "uv", center = TRUE)
+
+dmodx_df <- data.frame(
+  Country = food_imputed$Country,
+  DModX = as.numeric(DModX(pca_cv, X))
+)
+
+ggplot(dmodx_df, aes(x = reorder(Country, DModX), y = DModX)) +
+  geom_col(fill = "steelblue") +
+  geom_hline(yintercept = 1, linetype = "dashed") +
+  geom_hline(yintercept = 2, linetype = "dotted", colour = "red") +
+  coord_flip() +
+  labs(title = "DModX per country",
+       subtitle = "Dashed = model average (1), red dotted = rule-of-thumb limit (2)",
+       x = NULL, y = "DModX (normalised)") +
+  theme_minimal()
+```
+
+### Quiz: Outlier diagnostics
+
+```{r quiz-outliers, echo=FALSE}
+quiz(
+  question("Based on the T² ellipse and the DModX plot, are there countries you should remove?",
+    answer("No - nothing is extreme enough to justify removal", correct = TRUE),
+    answer("Yes, Sweden and Portugal, because they are the most extreme"),
+    answer("Yes, all Northern European countries"),
+    answer("Yes, the countries with missing values"),
+    message = "No country falls outside the 95% T² ellipse, and the highest DModX (Holland, 1.5) does not come close to twice the model average. Sweden and Portugal are extreme, but being extreme is not the same as being an outlier: they are extreme precisely because their diets differ most, which is the pattern we are trying to study. Removing them would delete the very signal you are after. Outlier diagnostics exist to make you go and LOOK at a sample, not to delete it automatically."
+  ),
+  question("Why is DModX worth looking at when you already have the scores plot?",
+    answer("A country can sit comfortably inside the ellipse and still be poorly described by the model", correct = TRUE),
+    answer("DModX is just another way of drawing the scores plot"),
+    answer("DModX replaces the need for R² and Q²"),
+    answer("DModX measures how important each food item is"),
+    message = "The scores plot only shows you the part of an observation that the model DOES capture. DModX measures the residual - the part it misses. An observation can look perfectly ordinary in the scores plot and still have a large DModX, which is why SIMCA shows you both."
   )
 )
 ```
 
 ## Loadings Plot
+
+<div class="alert alert-info">
+**A word of warning about signs.** The direction of a principal component is
+arbitrary: a component and its mirror image describe exactly the same model. Your
+plot may therefore be flipped compared with the SIMCA handout or with a fellow
+student's screen, and the sign of a loading on its own means nothing.
+
+What *is* meaningful is the relative arrangement: which foods sit together,
+which sit on opposite sides of the origin, and how far each lies from the
+centre. Always read a loadings plot together with its scores plot - foods in one
+corner of the loadings plot are the ones consumed most in the countries sitting
+in that same corner of the scores plot.
+</div>
 
 The loadings plot shows which food items contribute most to the patterns we see:
 
@@ -365,11 +554,11 @@ print(sort(pca_food$rotation[,1], decreasing = FALSE)[1:5])
 ```{r quiz-loadings, echo=FALSE}
 quiz(
   question("What food items are causing the main clustering patterns in the scores plot?",
+    answer("Garlic and olive oil at one end, crisp bread and frozen fish at the other", correct = TRUE),
     answer("Coffee and tea only"),
-    answer("Garlic and Olive oil", correct = TRUE),
     answer("Butter and margarine only"),
-    answer("All foods equally"),
-    message = "Garlic and Olive oil have strong loadings and clearly distinguish Mediterranean countries from Northern European countries."
+    answer("All foods contribute equally"),
+    message = "A loadings plot always has two ends, and both are informative. Garlic (-0.25) and olive oil (-0.15) have the strongest negative loadings on PC1 and pull the Mediterranean countries to that side. On PC2 the strongest positive loadings are crisp bread (0.39), frozen fish (0.37) and frozen vegetables (0.27), which is what sets the Northern countries apart. The further a variable lies from the origin, the more it contributes."
   )
 )
 ```
@@ -458,19 +647,19 @@ ggplot(subset_long, aes(x = Country, y = Percentage, fill = Food)) +
 
 ```{r quiz-pc3, echo=FALSE}
 quiz(
-  question("What separates England and Ireland from the rest of Europe on PC1 vs PC3?",
-    answer("Their high tea consumption", correct = TRUE),
-    answer("Their high coffee consumption"),
-    answer("Their butter usage"),
-    answer("Their yoghurt consumption"),
-    message = "England and Ireland have distinctively high tea consumption (99%) compared to most continental European countries."
+  question("England and Ireland are separated from the rest of Europe along PC3. Which variable contributes most to this separation?",
+    answer("Their unusually LOW consumption of ground coffee", correct = TRUE),
+    answer("Their high tea consumption"),
+    answer("Their high tinned soup consumption"),
+    answer("Their high yoghurt consumption"),
+    message = "This one is worth looking at carefully. At first glance jam, tea and tinned soup seem to be the obvious explanation, but check the loadings: ground coffee has by far the largest PC3 loading (0.48). England (27%) and Ireland (30%) are far below every other country - the next lowest is Austria at 55%. Tea does not actually discriminate: England and Ireland are at 99%, but Holland (98%), Sweden (93%) and Denmark (92%) are just as high. Tinned soup does not either: England is at 76% but Ireland at 18%, which is exactly the European average. Jam does contribute (loading -0.31, both around 90% against a mean of 55%), just less than ground coffee."
   ),
   question("How does the Garlic and Olive oil intake of England/Ireland compare to the rest of Europe?",
-    answer("Much higher than average"),
-    answer("About average"),
-    answer("Much lower than average", correct = TRUE),
-    answer("Only olive oil is lower"),
-    message = "England and Ireland have very low garlic (2%) and olive oil (1%) consumption compared to Mediterranean countries like Spain (23% garlic, 49% olive oil)."
+    answer("Garlic much lower, olive oil about average", correct = TRUE),
+    answer("Both much lower than average"),
+    answer("Both much higher than average"),
+    answer("Garlic about average, olive oil much lower"),
+    message = "Garlic: Ireland (5%) is the lowest of all 16 countries and England (11%) is among the lowest, against a European mean of 42%. Olive oil is a different story: England is at 57% and Ireland at 31%, against a mean of 54% - so England is even slightly above average. Compare that with Spain (86% garlic, 91% olive oil) or Italy (80% and 94%). It is a useful reminder to check the actual variable plots instead of assuming that two variables which sit close together in one loadings plot always behave the same way."
   )
 )
 ```
@@ -513,6 +702,19 @@ fviz_contrib(pca_food, choice = "var", axes = 2, top = 10) +
 ## Alternative Univariate Approaches
 
 If multivariate methods don't provide sufficient clarity, what alternative approaches could you use?
+
+```{r quiz-univariate, echo=FALSE}
+question("Which univariate approaches could you use here instead of PCA? (select all that apply)",
+  answer("A one-way ANOVA per food item, comparing the geographic regions", correct = TRUE),
+  answer("A t-test per food item when comparing just two groups of countries", correct = TRUE),
+  answer("Correcting for multiple testing, because you run one test per food item", correct = TRUE),
+  answer("Reporting whichever food has the largest PC1 loading, without any test"),
+  type = "multiple",
+  message = "Go variable by variable: a one-way ANOVA across the five regions, or a t-test if you reduce it to two groups (say Southern versus Northern). Because you would be running 20 tests - one per food - you must correct for multiple testing (Bonferroni, or Benjamini-Hochberg if you prefer to control the false discovery rate). What you lose compared with PCA is the correlation structure: univariate tests treat garlic and olive oil as two unrelated findings, whereas the loadings plot shows at a glance that they travel together."
+)
+```
+
+The heatmap below is a visual version of that variable-by-variable comparison:
 
 ```{r univariate-viz, exercise=TRUE}
 # Heatmap of food consumption by country
@@ -596,19 +798,22 @@ ggplot(regional_long, aes(x = Geographic_Location, y = Average, fill = Food)) +
 
 1. **Cultural Patterns**: Food consumption reflects clear geographic and cultural patterns across Europe
 2. **Mediterranean vs Northern**: Garlic and olive oil distinguish Southern European countries
-3. **UK Uniqueness**: England and Ireland show distinctive patterns with high tea consumption
+3. **UK Uniqueness**: England and Ireland stand apart mainly because of their very low ground coffee consumption, not because of tea
 4. **PCA Interpretation**: Multiple PCs reveal different aspects of variation:
-   - PC1: Mediterranean vs Northern divide (Garlic, Olive oil)
-   - PC2: Other consumption patterns
-   - PC3: Tea drinking patterns (UK/Ireland)
-5. **Data Quality**: Food consumption data has more variability than biological measurements
+   - PC1 (31.3%): Mediterranean vs the rest (garlic, olive oil at the negative end)
+   - PC2 (19.2%): the Nordic pattern (crisp bread, frozen fish, frozen vegetables)
+   - PC3 (13.7%): England and Ireland (low ground coffee, high jam)
+5. **Data Quality**: Food consumption data has more variability than biological measurements. R²cum reaches 0.64 at three components, but Q²cum peaks around 0.2 and then falls: the model describes a real but weak pattern, good enough to explore with, not good enough to predict with.
+6. **Diagnostics**: no country is a genuine outlier here, but note *why* - with only 16 observations the Hotelling's T² ellipse is very wide, so a small data set has little power to detect outliers in the first place.
+7. **Missing data**: SIMCA's NIPALS algorithm handles missing values directly, `prcomp()` does not. Mean imputation was harmless with 3 missing cells out of 320, but that needs checking rather than assuming.
 
 ### Key Differences Identified
 
-**Portugal and Spain vs Sweden and Denmark:**
-- **Higher**: Garlic, Olive oil, Oranges
-- **Lower**: Frozen vegetables, Tinned fruit, Jam
-- **Cultural interpretation**: Mediterranean diet vs Nordic diet
+**Portugal and Spain vs Sweden and Denmark** (average % of households, the four countries only):
+
+- **Higher**: Garlic (88 vs 10), Olive oil (92 vs 39), Instant coffee (33 vs 15)
+- **Lower**: Crisp bread (11 vs 64), Jam (27 vs 70), Frozen vegetables (5 vs 44), Tinned fruit (19 vs 52)
+- **Cultural interpretation**: Mediterranean diet vs Nordic diet - fresh, oil- and garlic-based cooking against preserved, frozen and tinned products
 
 ### Practice Exercise
 
