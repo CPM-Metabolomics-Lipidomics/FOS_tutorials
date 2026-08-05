@@ -12,7 +12,7 @@ RUN apt-get update && apt-get install -y \
 
 # Install R packages
 RUN R -e "install.packages(c('shiny', 'learnr', 'rmarkdown', 'tidyverse', 'plotly', 'corrplot', 'DT', 'factoextra', 'FactomineR', 'BiocManager'))"
-RUN R -e "BiocManager::install(c('pcaMethods'))"
+RUN R -e "BiocManager::install(c('pcaMethods', 'mixOmics'))"
 
 # Copy tutorials
 COPY FOS/ /srv/FOS/
