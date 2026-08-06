@@ -554,7 +554,7 @@ total_variance_no_setosa <- sum(variance_no_setosa)
 r2_values_no_setosa <- variance_no_setosa / total_variance_no_setosa
 ```
 
-```{r plot-no-setosa, exercise=TRUE, exercise.setup="pca-no-setosa"}
+```{r plot-no-setosa, exercise=TRUE, exercise.setup="pca-no-setosa", fig.width=7, fig.height=6}
 # Scores plot without setosa
 scores_no_setosa <- data.frame(
   PC1 = pca_no_setosa$x[,1],
@@ -562,13 +562,19 @@ scores_no_setosa <- data.frame(
   Species = iris_no_setosa$Species
 )
 
-ggplot(scores_no_setosa, aes(x = PC1, y = PC2, color = Species)) +
+p <- ggplot(scores_no_setosa, aes(x = PC1, y = PC2, color = Species)) +
+  geom_vline(xintercept = 0,
+             colour = "grey") +
+  geom_hline(yintercept = 0,
+             colour = "grey") +
   geom_point(size = 3, alpha = 0.7) +
   labs(title = "PCA Scores Plot (Without Setosa)",
        x = paste0("PC1 (", round(r2_values_no_setosa[1]*100, 1), "% variance)"),
        y = paste0("PC2 (", round(r2_values_no_setosa[2]*100, 1), "% variance)")) +
   theme_minimal() +
   theme(legend.position = "bottom")
+
+ggplotly(p, tooltip = c("text", "colour", "x", "y"))
 ```
 
 ### Comparing Models
