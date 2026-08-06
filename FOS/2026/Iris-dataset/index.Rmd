@@ -461,7 +461,7 @@ from the centre. Always interpret loadings relative to each other, never as
 "positive is good, negative is bad".
 </div>
 
-```{r loadings-plot, exercise=TRUE, exercise.setup='pca-basic'}
+```{r loadings-plot, exercise=TRUE, exercise.setup='pca-basic', fig.width=7, fig.height=6}
 # Create loadings plot
 loadings_df <- data.frame(
   Variable = rownames(pca_result$rotation),
@@ -470,9 +470,9 @@ loadings_df <- data.frame(
 )
 
 # Loadings plot
-ggplot(data = loadings_df, 
-       aes(x = PC1,
-           y = PC2)) +
+p <- ggplot(data = loadings_df, 
+            aes(x = PC1,
+                y = PC2)) +
   geom_point(size = 4, 
              color = "red", 
              alpha = 0.7) +
@@ -492,11 +492,13 @@ ggplot(data = loadings_df,
   theme_minimal() +
   xlim(-1, 1) +
   ylim(-1, 1)
+
+ggplotly(p, tooltip = c("text", "colour", "x", "y"))
 ```
 
 ### Enhanced Loadings Visualization
 
-```{r loadings-arrows, exercise=TRUE, exercise.setup='pca-basic'}
+```{r loadings-arrows, exercise=TRUE, exercise.setup='pca-basic', fig.width=7, fig.height=6}
 # Create a biplot-style visualization
 # Use fviz_pca_biplot for a comprehensive view
 fviz_pca_biplot(pca_result, 
@@ -507,6 +509,8 @@ fviz_pca_biplot(pca_result,
                 col.var = "black",
                 repel = TRUE,
                 legend.title = "Species") +
+  labs(x = "PC1 Loadings",
+       y = "PC2 Loadings") +
   theme_minimal()
 ```
 
