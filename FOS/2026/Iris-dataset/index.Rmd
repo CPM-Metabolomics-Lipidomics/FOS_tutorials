@@ -496,7 +496,14 @@ p <- ggplot(data = loadings_df,
 ggplotly(p, tooltip = c("text", "colour", "x", "y"))
 ```
 
-### Enhanced Loadings Visualization
+### Biplot: scores and loadings in one plot
+
+A **biplot** puts the species (points) and the sepal/petal variable (arrows) on 
+the same axes, so you can read the two together instead of flipping between 
+plots. A species lies in the direction of the sepal/petal variable which has 
+the most influence, and the longer an arrow, the more that sepal/petal variable 
+drives the picture. sepal/petal variable whose arrows point the same way tend 
+to be found together.
 
 ```{r loadings-arrows, exercise=TRUE, exercise.setup='pca-basic', fig.width=7, fig.height=6}
 # Create a biplot-style visualization
