@@ -626,7 +626,7 @@ question("Suppose PCA does not separate versicolor from virginica well enough. W
   answer("Simply pick the variable with the largest PC1 loading and report it without further testing"),
   answer("Nothing - if PCA fails there is no alternative"),
   type = "multiple",
-  message = "The standard fallback is to go variable by variable: a t-test for two groups, or a one-way ANOVA when there are three or more. Because you then perform one test per variable, you must correct for multiple testing (for example Bonferroni or Benjamini-Hochberg), otherwise you will find 'significant' differences by chance alone. With only 4 variables that is a minor issue, but in the NMR tutorial you will have 655 of them, and there it matters a great deal."
+  message = "The standard fallback is to go variable by variable: a t-test for two groups, or a one-way ANOVA when there are three or more. Because you then perform one test per variable, you must correct for multiple testing (for example Bonferroni or Benjamini-Hochberg), otherwise you will find 'significant' differences by chance alone. With only 4 variables that is a minor issue, but in metabolomics you often have many features, and then it matters a great deal!"
 )
 ```
 
@@ -646,16 +646,6 @@ ggplot(iris_long, aes(x = Species, y = Value, fill = Species)) +
   labs(title = "Distribution of Each Variable by Species")
 ```
 
-```{r correlation-analysis, exercise=TRUE}
-# Correlation analysis
-# Calculate correlation matrix
-cor_matrix <- cor(iris_data[,3:6])
-
-# Visualize correlations
-corrplot(cor_matrix, method = "circle", type = "upper", 
-         order = "hclust", tl.cex = 0.8, tl.col = "black")
-```
-
 ## Summary and Key Takeaways
 
 ### What We've Learned
@@ -668,49 +658,6 @@ corrplot(cor_matrix, method = "circle", type = "upper",
 4. **Diagnostics**: R² and Q² say nothing about individual observations. Hotelling's T² finds strong outliers within the model plane, DModX finds observations lying far from it. Always look at both before trusting a model.
 5. **Sign conventions**: the direction of a component is arbitrary; interpret loadings relative to each other, not by their absolute sign.
 6. **Biological Interpretation**: Petal measurements are key distinguishing features of iris species
-
-### Practice Exercise
-
-```{r final-exercise, exercise=TRUE}
-# Your turn: Create a comprehensive analysis
-# 1. Perform PCA on the full dataset
-# 2. Create both scores and loadings plots
-# 3. Identify which variables are most important for species separation
-
-# Start your analysis here:
-pca_final <- prcomp(iris_data[,3:6], scale. = TRUE)
-
-# Add your plotting code below:
-
-```
-
-```{r final-exercise-solution}
-# Complete analysis
-pca_final <- prcomp(iris_data[,3:6], scale. = TRUE)
-
-# Scores plot
-scores_final <- data.frame(
-  PC1 = pca_final$x[, 1],
-  PC2 = pca_final$x[, 2],
-  Species = iris_data$Species
-)
-
-p1 <- ggplot(data = scores_final, 
-             aes(x = PC1, 
-                 y = PC2, 
-                 color = Species)) +
-  geom_point(size = 3, 
-             alpha = 0.7) +
-  labs(title = "Final PCA Analysis - Scores Plot") +
-  theme_minimal()
-
-# Loadings information
-loadings_final <- pca_final$rotation[,1:2]
-print("Most important variables for PC1:")
-print(sort(abs(loadings_final[,1]), decreasing = TRUE))
-
-p1
-```
 
 ### Next Steps
 
