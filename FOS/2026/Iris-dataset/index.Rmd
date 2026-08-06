@@ -112,7 +112,7 @@ PCA is a dimensionality reduction technique that finds the directions (principal
 
 ```{r pca-basic, exercise=TRUE}
 # Perform PCA on the numeric variables only
-# We'll use the scaled data (equivalent to UV scaling in SIMCA)
+# We'll use the scaled data
 pca_result <- prcomp(x = iris_data[, 3:6],
                      scale. = TRUE, 
                      center = TRUE)
@@ -150,8 +150,8 @@ cat("PC1+PC2:", round(r2_cumulative[2]*100, 1), "%\n")
 
 ### Model quality: R² and Q²
 
-In SIMCA the first thing you look at is the "Summary of Fit", which reports two
-numbers per component:
+To be able to say something about the quality of the model it is good to also 
+calculate the **Q²** per component as well:
 
 - **R²cum** - the cumulative fraction of the data *described* by the model.
   This is simply the cumulative variance explained that we calculated above.
@@ -165,8 +165,7 @@ numbers per component:
 
 The important difference: **R² always increases when you add a component, but
 Q² does not**. Once a component starts describing noise instead of structure,
-Q² stops rising and begins to fall. That is how SIMCA's "Autofit" decides how
-many components to keep.
+Q² stops rising and begins to fall. 
 
 R does not report Q² by default, but the `pcaMethods` package can calculate it:
 
@@ -185,7 +184,7 @@ pca_cv <- pca(X,
 # R2cum: cumulative variance described
 r2cum <- R2cum(pca_cv)
 
-# Q2: cumulative predictive ability, 7-fold cross-validation (as SIMCA does)
+# Q2: cumulative predictive ability, 7-fold cross-validation
 q2cum <- Q2(pca_cv, X, fold = 7, verbose = FALSE)
 
 data.frame(
@@ -208,10 +207,6 @@ data.frame(
   Q2cum = c(round(q2cum, 3), rep(NA, length(r2cum) - length(q2cum)))
 )
 ```
-
-Note that R's cross-validation scheme is not identical to SIMCA's, so the Q²
-values will be close to but not exactly the same as the ones you would get in
-SIMCA.
 
 ### Quiz: Understanding PCA Quality
 
@@ -336,8 +331,8 @@ quiz(
 
 R² and Q² tell you how much of the data the model describes and predicts, but
 they say nothing about *individual observations*. A single strange sample can
-distort a model without making R² or Q² look bad. SIMCA therefore offers two
-diagnostic plots, and you can reproduce both in R.
+distort a model without making R² or Q² look bad. Therefore, it is important to 
+look at two diagnostic plots.
 
 **Hotelling's T²** finds *strong* outliers: observations that lie far from the
 centre **inside** the model plane. In a scores plot this is drawn as a
@@ -445,8 +440,7 @@ The loadings plot shows how the original variables contribute to each principal 
 **A word of warning about signs.** The direction of a principal component is
 arbitrary. A component and its mirror image describe exactly the same model, so
 different software - or even the same software on a different computer - may
-flip PC1 or PC2 upside down. Your plot may therefore be mirrored compared with
-the screenshots in the SIMCA handout or with a fellow student's screen.
+flip PC1 or PC2 upside down. 
 
 What is *not* arbitrary is the **relative** position of things: which variables
 sit together, which sit on opposite sides of the origin, and how far they are
