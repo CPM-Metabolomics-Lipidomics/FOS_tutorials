@@ -653,14 +653,14 @@ arrow_scale <- 8
 
 biplot_scores <- data.frame(
   PC1 = food_scores[, 1],
-  PC2 = food_scores[, 3],
+  PC3 = food_scores[, 3],
   Country = food_data$Country,
   Region = food_data$Geographic_Location
 )
 
 biplot_loadings <- data.frame(
   PC1 = food_loadings[, 1] * arrow_scale,
-  PC2 = food_loadings[, 3] * arrow_scale,
+  PC3 = food_loadings[, 3] * arrow_scale,
   Food = rownames(food_loadings)
 )
 
