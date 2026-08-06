@@ -329,10 +329,10 @@ distort a model without making R² or Q² look bad. Therefore, it is important t
 look at two diagnostic plots.
 
 **Hotelling's T²** finds *strong* outliers: observations that lie far from the
-centre **inside** the model plane. In a scores plot this is drawn as a
+centre **within** the model plane. In a scores plot this is drawn as a
 confidence ellipse - anything outside it is a candidate strong outlier.
 
-```{r hotelling, exercise=TRUE, exercise.setup='pca-basic'}
+```{r hotelling, exercise=TRUE, exercise.setup='pca-basic', fig.width=7, fig.height=6}
 scores_df <- data.frame(
   PC1 = pca_result$x[, 1],
   PC2 = pca_result$x[, 2],
@@ -342,7 +342,7 @@ scores_df <- data.frame(
 
 # Hotelling's T2 for the first two components
 n <- nrow(scores_df)
-A <- 2                                    # number of components
+A <- 2 # number of components
 sd_pc <- apply(pca_result$x[, 1:A], 2, sd)
 
 scores_df$T2 <- rowSums((pca_result$x[, 1:A] / rep(sd_pc, each = n))^2)
@@ -357,25 +357,29 @@ ellipse <- data.frame(
   PC2 = sd_pc[2] * sqrt(t2_crit) * sin(theta)
 )
 
-ggplot(scores_df, aes(x = PC1, y = PC2)) +
+p <- ggplot(scores_df, aes(x = PC1, y = PC2)) +
+  geom_vline(xintercept = 0,
+             color = "grey") +
+  geom_hline(yintercept = 0,
+             color = "grey") +
   geom_path(data = ellipse, colour = "grey40", linetype = "dashed") +
   geom_point(aes(colour = Species), size = 3, alpha = 0.7) +
   geom_text(data = subset(scores_df, T2 > t2_crit),
             aes(label = ID), vjust = -0.9, size = 3) +
-  labs(title = "Scores plot with 95% Hotelling's T² ellipse",
-       subtitle = "Labelled points lie outside the ellipse") +
+  labs(title = "Scores plot with 95% Hotelling's T² ellipse") +
   theme_minimal() +
   theme(legend.position = "bottom")
 
-cat("Critical value (95%):", round(t2_crit, 2), "\n")
+ggplotly(p, tooltip = c("text", "colour", "x", "y"))
+
 cat("Observations outside the ellipse:", sum(scores_df$T2 > t2_crit), "of", n, "\n")
 ```
 
 **DModX** (Distance to the Model in X) finds *moderate* outliers: observations
-that are not extreme within the plane, but lie far *away* from it, meaning the
-model describes them poorly.
+that are not extreme within the plane, but lie far *away* from it (rule-of-thumb 
+2 - 3x), meaning the model describes them poorly.
 
-```{r dmodx, exercise=TRUE, exercise.setup='pca-basic'}
+```{r dmodx, exercise=TRUE, exercise.setup='pca-basic', fig.width=7, fig.height=6}
 X <- as.matrix(iris_data[, 3:6])
 
 pca_cv <- pca(X, method = "svd", nPcs = 2, scale = "uv", center = TRUE)
@@ -391,15 +395,30 @@ dmodx_df <- data.frame(
 # The normalised DModX is scaled so that 1 is the average distance to the
 # model. A common rule of thumb is that an observation is only worth calling
 # an outlier once it is about twice that.
-ggplot(dmodx_df, aes(x = ID, y = DModX, fill = Species)) +
+p <- ggplot(dmodx_df, aes(x = ID, y = DModX, fill = Species)) +
   geom_col() +
   geom_hline(yintercept = 1, linetype = "dashed") +
   geom_hline(yintercept = 2, linetype = "dotted", colour = "red") +
-  labs(title = "DModX per observation",
-       subtitle = "Dashed = model average (1), red dotted = rule-of-thumb limit (2)",
-       y = "DModX (normalised)") +
+  labs(y = "DModX (normalised)") +
   theme_minimal() +
   theme(legend.position = "bottom")
+
+ggplotly(p, tooltip = c("text", "colour", "x", "y")) |> 
+  layout(
+    title = list(
+      text = paste0(
+        "DModX per observation",
+        "<br>",
+        "<sup>Dashed = model average (1), red dotted = rule-of-thumb limit (2)</sup>"
+      ),
+      x = 0,
+      y = 1,
+      xanchor = "left",
+      yanchor = "top",
+      xref = "paper",
+      yref = "paper"
+    )
+  )
 
 # Which observations are furthest from the model?
 head(dmodx_df[order(-dmodx_df$DModX), ], 5)
@@ -414,7 +433,7 @@ quiz(
     answer("They measure exactly the same thing"),
     answer("T² is for variables, DModX is for observations"),
     answer("T² is calculated on the loadings, DModX on the scores"),
-    message = "T² measures distance from the origin INSIDE the model (strong outliers, visible in the scores plot). DModX measures the residual, i.e. the distance from the model plane (moderate outliers, invisible in a scores plot). You need both."
+    message = "T² measures distance from the origin WITHIN the model (strong outliers, visible in the scores plot). An observation far away from the center can have a high leverage. DModX measures the residual, i.e. the distance from the model plane (moderate outliers, invisible in a scores plot) High DModX for an observation means that the model describes this observation poorly. You need both!"
   ),
   question("A few observations lie just outside the 95% T² ellipse. Should you remove them?",
     answer("No - investigate them first; being outside a 95% ellipse is expected for about 5% of observations", correct = TRUE),
