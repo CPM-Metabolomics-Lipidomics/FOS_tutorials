@@ -22,7 +22,7 @@ formats  <- if (length(args) >= 1) args[1] else "both"
 only     <- if (length(args) >= 2) args[-1] else NULL
 
 root     <- normalizePath(".")
-year_dir <- file.path(root, "FOS", "2026")
+year_dir <- file.path(root, "inst", "tutorials")
 out_dir  <- file.path(root, "handouts")
 dir.create(out_dir, showWarnings = FALSE)
 

@@ -653,14 +653,14 @@ arrow_scale <- 8
 
 biplot_scores <- data.frame(
   PC1 = food_scores[, 1],
-  PC2 = food_scores[, 3],
+  PC3 = food_scores[, 3],
   Country = food_data$Country,
   Region = food_data$Geographic_Location
 )
 
 biplot_loadings <- data.frame(
   PC1 = food_loadings[, 1] * arrow_scale,
-  PC2 = food_loadings[, 3] * arrow_scale,
+  PC3 = food_loadings[, 3] * arrow_scale,
   Food = rownames(food_loadings)
 )
 
@@ -808,56 +808,139 @@ component. Look at the block of dark red where Portugal, Italy and Spain meet
 garlic and olive oil, and at the Nordic block on crisp bread and frozen foods.
 The grey cells are the three missing values.
 
-### Clustering Analysis
+### One-way ANOVA, food by food
 
-```{r clustering, exercise=TRUE, exercise.setup="prep-pca"}
-# Hierarchical clustering. dist() cannot cope with missing values, so we use
-# completeObs(), the data matrix with the few gaps filled in by the PCA model.
-cluster_matrix <- completeObs(pca_food)
+The heatmap is suggestive but it is not a test. The univariate route is to take
+each food in turn and ask whether the five regions differ, with a **one-way
+ANOVA**. That means 20 separate tests, so we also correct the p-values for
+multiple testing.
 
-# Calculate distance and perform clustering
-dist_matrix <- dist(scale(cluster_matrix))
-hc <- hclust(dist_matrix, method = "ward.D2")
+```{r anova-per-food, exercise=TRUE}
+# One ANOVA per food: does consumption differ between the five regions?
+region <- factor(food_data$Geographic_Location)
 
-# Plot dendrogram
-plot(hc, main = "Hierarchical Clustering of Countries",
-     xlab = "Country", ylab = "Distance", sub = "")
-rect.hclust(hc, k = 4, border = 2:5)
+p_anova <- sapply(food_vars, function(food) {
+  model <- aov(food_data[[food]] ~ region)
+  summary(model)[[1]][["Pr(>F)"]][1]
+})
+
+anova_results <- data.frame(
+  Food          = food_vars,
+  p_raw         = round(p_anova, 4),
+  p_BH          = round(p.adjust(p_anova, method = "BH"), 4),
+  p_Bonferroni  = round(p.adjust(p_anova, method = "bonferroni"), 4)
+)
+anova_results <- anova_results[order(anova_results$p_raw), ]
+
+head(anova_results, 8)
+
+cat("\nFoods significant at 0.05:\n")
+cat("  without correction:", sum(anova_results$p_raw < 0.05), "\n")
+cat("  Benjamini-Hochberg:", sum(anova_results$p_BH < 0.05), "\n")
+cat("  Bonferroni:        ", sum(anova_results$p_Bonferroni < 0.05), "\n")
 ```
 
-### Regional Comparisons
+```{r anova-per-food-solution}
+region <- factor(food_data$Geographic_Location)
+p_anova <- sapply(food_vars, function(food) {
+  summary(aov(food_data[[food]] ~ region))[[1]][["Pr(>F)"]][1]
+})
+data.frame(Food = food_vars,
+           p_raw = round(p_anova, 4),
+           p_BH = round(p.adjust(p_anova, "BH"), 4),
+           p_Bonferroni = round(p.adjust(p_anova, "bonferroni"), 4)) |>
+  arrange(p_raw) |>
+  head(8)
+```
 
-```{r regional-comparison, exercise=TRUE}
-# Compare regions on key foods
-regional_summary <- food_data %>%
-  group_by(Geographic_Location) %>%
-  summarise(
-    Avg_Garlic = mean(Garlic, na.rm = TRUE),
-    Avg_Olive_Oil = mean(Olive_Oil, na.rm = TRUE),
-    Avg_Tea = mean(Tea, na.rm = TRUE),
-    Avg_Coffee = mean(Ground_Coffee, na.rm = TRUE),
-    Avg_Butter = mean(Butter, na.rm = TRUE),
-    .groups = 'drop'
-  )
+Look at what the correction does. Seven foods look significant if you ignore the
+fact that you ran 20 tests; four survive Benjamini-Hochberg, and only **one** -
+ground coffee - survives the strict Bonferroni correction. That is the price of
+asking twenty questions of sixteen countries.
 
-print(regional_summary)
+### t-test between two groups
 
-# Visualize
-regional_long <- regional_summary %>%
-  pivot_longer(cols = starts_with("Avg_"), 
-               names_to = "Food", 
-               values_to = "Average",
-               names_prefix = "Avg_")
+If you narrow the question to two groups the test becomes a **t-test**. Compare
+the Southern countries with the Northern ones, which is the contrast PC1
+described:
 
-ggplot(regional_long, aes(x = Geographic_Location, y = Average, fill = Food)) +
-  geom_bar(stat = "identity", position = "dodge") +
+```{r ttest-two-groups, exercise=TRUE}
+# Keep only the Southern and Northern countries
+two_groups <- food_data[food_data$Geographic_Location %in% c("S", "N"), ]
+
+cat("Group sizes:\n")
+print(table(two_groups$Geographic_Location))
+
+p_ttest <- sapply(food_vars, function(food) {
+  t.test(two_groups[[food]] ~ two_groups$Geographic_Location)$p.value
+})
+
+ttest_results <- data.frame(
+  Food         = food_vars,
+  p_raw        = round(p_ttest, 4),
+  p_BH         = round(p.adjust(p_ttest, method = "BH"), 4),
+  p_Bonferroni = round(p.adjust(p_ttest, method = "bonferroni"), 4)
+)
+ttest_results <- ttest_results[order(ttest_results$p_raw), ]
+
+head(ttest_results, 8)
+```
+
+```{r ttest-two-groups-solution}
+two_groups <- food_data[food_data$Geographic_Location %in% c("S", "N"), ]
+p_ttest <- sapply(food_vars, function(food) {
+  t.test(two_groups[[food]] ~ two_groups$Geographic_Location)$p.value
+})
+data.frame(Food = food_vars,
+           p_raw = round(p_ttest, 4),
+           p_BH = round(p.adjust(p_ttest, "BH"), 4),
+           p_Bonferroni = round(p.adjust(p_ttest, "bonferroni"), 4)) |>
+  arrange(p_raw) |>
+  head(8)
+```
+
+Only two foods survive correction here: **garlic** and **olive oil** - exactly
+the two the loadings plot pointed at. Note also how small the groups are (3
+Southern and 4 Northern countries), which is why so little reaches significance.
+
+Finally, plot the two winners so you can see what the p-values are describing:
+
+```{r univariate-boxplot, exercise=TRUE, fig.width=7, fig.height=4}
+food_data |>
+  select(Geographic_Location, Garlic, Olive_Oil) |>
+  pivot_longer(cols = c(Garlic, Olive_Oil),
+               names_to = "Food", values_to = "Percentage") |>
+  ggplot(aes(x = Geographic_Location, y = Percentage,
+             fill = Geographic_Location)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+  geom_jitter(width = 0.15, size = 2, alpha = 0.8) +
+  facet_wrap(~Food) +
+  scale_fill_manual(values = region_colors, labels = region_labels) +
+  scale_x_discrete(labels = region_labels) +
+  labs(title = "The two foods that survive multiple-testing correction",
+       x = NULL, y = "% of households", fill = "Region") +
   theme_minimal() +
-  labs(title = "Average Food Consumption by Region",
-       x = "Geographic Region",
-       y = "Average % Households") +
-  scale_x_discrete(labels = c("C" = "Central", "N" = "Northern", 
-                               "S" = "Southern", "U" = "UK/Ireland", 
-                               "X" = "Benelux"))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "none")
+```
+
+```{r quiz-univariate-results, echo=FALSE}
+quiz(
+  question("The t-test finds garlic and olive oil, which is what the loadings plot already told you. So what did PCA add?",
+    answer("PCA showed that garlic and olive oil vary *together*, and placed every country on one picture - twenty separate tests cannot do either", correct = TRUE),
+    answer("Nothing - the two approaches are equivalent"),
+    answer("PCA gave smaller p-values"),
+    answer("PCA needed no assumptions about the data"),
+    message = "The univariate tests hand you a ranked list of foods and nothing else: they treat garlic and olive oil as two unrelated findings, and they say nothing about which countries resemble which. PCA gives you the correlation structure and the map of countries in one go. Note also that PCA produces no p-values at all - the two approaches answer different questions, and in practice you want both."
+  ),
+  question("Why does the number of significant foods drop from 7 to 1 when you apply Bonferroni?",
+    answer("Because running 20 tests at 0.05 would give about one false positive by chance alone, and Bonferroni protects against that very conservatively", correct = TRUE),
+    answer("Because the ANOVA was calculated incorrectly"),
+    answer("Because Bonferroni removes the missing values"),
+    answer("Because there are only 16 countries"),
+    message = "With 20 tests at a 0.05 threshold you expect 20 x 0.05 = 1 significant result purely by chance. Bonferroni divides the threshold by the number of tests (0.05/20 = 0.0025), which controls the chance of ANY false positive but throws away a lot of real signal. Benjamini-Hochberg is the middle road: it controls the *proportion* of false positives among your hits, and here it keeps four foods instead of one. Which you choose depends on whether a missed finding or a false one costs you more."
+  )
+)
 ```
 
 ## Summary and Key Takeaways
@@ -881,64 +964,3 @@ ggplot(regional_long, aes(x = Geographic_Location, y = Average, fill = Food)) +
 - **Higher**: Garlic (88 vs 10), Olive oil (92 vs 39), Instant coffee (33 vs 15)
 - **Lower**: Crisp bread (11 vs 64), Jam (27 vs 70), Frozen vegetables (5 vs 44), Tinned fruit (19 vs 52)
 - **Cultural interpretation**: Mediterranean diet vs Nordic diet - fresh, oil- and garlic-based cooking against preserved, frozen and tinned products
-
-### Practice Exercise
-
-```{r final-exercise, exercise=TRUE}
-# Your comprehensive analysis task:
-# 1. Perform PCA on the food data
-# 2. Identify which food items best distinguish Northern from Southern Europe
-# 3. Create a visualization showing this distinction
-
-# Start your analysis here:
-pca_final <- pcaMethods::pca(food_matrix, method = "nipals", nPcs = 3,
-                             scale = "uv", center = TRUE)
-
-# Add your code below:
-
-```
-
-```{r final-exercise-solution}
-# Complete analysis
-pca_final <- pcaMethods::pca(food_matrix, method = "nipals", nPcs = 3,
-                             scale = "uv", center = TRUE)
-
-# Identify key variables
-loadings_pc1 <- sort(loadings(pca_final)[, 1], decreasing = TRUE)
-cat("Foods more common in one direction:\n")
-print(head(loadings_pc1, 3))
-cat("\nFoods more common in opposite direction:\n")
-print(tail(loadings_pc1, 3))
-
-# Visualize
-scores_final <- data.frame(
-  PC1 = scores(pca_final)[, 1],
-  PC2 = scores(pca_final)[, 2],
-  Country = food_data$Country,
-  Region = food_data$Geographic_Location
-)
-
-ggplot(scores_final, aes(x = PC1, y = PC2, color = Region, label = Country)) +
-  geom_point(size = 4) +
-  geom_text(vjust = -0.7, size = 2.5) +
-  labs(title = "European Food Consumption Patterns") +
-  theme_minimal()
-```
-
-### Discussion Questions
-
-1. **Why do you think there are such clear regional patterns in food consumption?**
-   - Climate and agriculture
-   - Cultural traditions
-   - Historical trade patterns
-
-2. **What other factors might explain the differences beyond geography?**
-   - Economic development
-   - Urbanization
-   - Immigration patterns
-   - EU integration effects
-
-3. **How reliable is this data for making inferences about actual consumption?**
-   - Based on household presence, not quantity
-   - Survey-based (potential biases)
-   - Temporal snapshot (may change over time)

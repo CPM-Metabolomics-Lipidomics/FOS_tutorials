@@ -653,6 +653,130 @@ ggplot(iris_long, aes(x = Species, y = Value, fill = Species)) +
   labs(title = "Distribution of Each Variable by Species")
 ```
 
+### One-way ANOVA per variable
+
+Boxplots suggest, they do not test. The univariate route is to take each of the
+four measurements in turn and ask whether the three species differ, with a
+**one-way ANOVA**. Four tests means four p-values, so we correct them as well.
+
+```{r anova-per-variable, exercise=TRUE}
+flower_vars <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+
+p_anova <- sapply(flower_vars, function(v) {
+  model <- aov(iris_data[[v]] ~ iris_data$Species)
+  summary(model)[[1]][["Pr(>F)"]][1]
+})
+
+data.frame(
+  Variable     = flower_vars,
+  p_raw        = signif(p_anova, 3),
+  p_Bonferroni = signif(p.adjust(p_anova, method = "bonferroni"), 3)
+)
+```
+
+```{r anova-per-variable-solution}
+flower_vars <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+p_anova <- sapply(flower_vars, function(v) {
+  summary(aov(iris_data[[v]] ~ iris_data$Species))[[1]][["Pr(>F)"]][1]
+})
+data.frame(Variable = flower_vars,
+           p_raw = signif(p_anova, 3),
+           p_Bonferroni = signif(p.adjust(p_anova, "bonferroni"), 3))
+```
+
+Every p-value is astronomically small - the largest is about 10^-16^, and all
+four stay significant after correction. With 50 flowers per species and only 4
+tests, multiple testing is barely an issue here. Later you will see that in the 
+Food data set it is the opposite, where 16 countries and 20 tests meant almost 
+nothing survived.
+
+### t-test: versicolor versus virginica
+
+The ANOVA only says "the species differ somewhere", which we already knew -
+setosa is obviously different. The interesting question is the pair PCA
+struggled with. Drop setosa and run a **t-test** per variable:
+
+```{r ttest-versicolor-virginica, exercise=TRUE}
+# iris_no_setosa contains only versicolor and virginica
+flower_vars <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+
+p_ttest <- sapply(flower_vars, function(v) {
+  t.test(iris_no_setosa[[v]] ~ iris_no_setosa$Species)$p.value
+})
+
+data.frame(
+  Variable     = flower_vars,
+  p_raw        = signif(p_ttest, 3),
+  p_Bonferroni = signif(p.adjust(p_ttest, method = "bonferroni"), 3)
+)
+```
+
+```{r ttest-versicolor-virginica-solution}
+flower_vars <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+p_ttest <- sapply(flower_vars, function(v) {
+  t.test(iris_no_setosa[[v]] ~ iris_no_setosa$Species)$p.value
+})
+data.frame(Variable = flower_vars,
+           p_raw = signif(p_ttest, 3),
+           p_Bonferroni = signif(p.adjust(p_ttest, "bonferroni"), 3))
+```
+
+All four are significant again, even Sepal.Width at p = 0.007 after correction.
+So every measurement "differs significantly" between versicolor and virginica.
+Does that mean you can tell the two species apart with any of them?
+
+### Significant is not the same as separated
+
+A p-value tells you whether a difference in *means* is real. It says nothing
+about how much the two groups **overlap** - and overlap is what decides whether
+you could classify a new flower. Let us measure both.
+
+```{r effect-size, exercise=TRUE}
+flower_vars <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+
+effect <- t(sapply(flower_vars, function(v) {
+  versicolor <- iris_no_setosa[[v]][iris_no_setosa$Species == "versicolor"]
+  virginica  <- iris_no_setosa[[v]][iris_no_setosa$Species == "virginica"]
+
+  # Cohen's d: difference in means expressed in standard deviations
+  cohens_d <- (mean(virginica) - mean(versicolor)) /
+    sqrt((var(versicolor) + var(virginica)) / 2)
+
+  # If you had to split the two species with ONE cutoff on this variable,
+  # what is the smallest percentage you would get wrong?
+  cutoffs <- sort(unique(c(versicolor, virginica)))
+  error <- min(sapply(cutoffs, function(cut) {
+    (sum(versicolor >= cut) + sum(virginica < cut)) / nrow(iris_no_setosa)
+  }))
+
+  c(mean_versicolor = round(mean(versicolor), 2),
+    mean_virginica  = round(mean(virginica), 2),
+    Cohens_d        = round(cohens_d, 2),
+    error_pct       = round(error * 100, 1))
+}))
+
+as.data.frame(effect)
+```
+
+```{r quiz-univariate-results, echo=FALSE}
+quiz(
+  question("Sepal.Width differs significantly between the two species (p = 0.007). How well does it separate them?",
+    answer("Badly - the best possible single cutoff still gets 37% of the flowers wrong", correct = TRUE),
+    answer("Perfectly - a significant p-value means the groups are separated"),
+    answer("It cannot be judged from these numbers"),
+    answer("Better than Petal.Width, because its p-value is smaller"),
+    message = "This is the single most important idea in this section. With 50 flowers per group, even a small shift in means becomes 'significant': Sepal.Width has a Cohen's d of only 0.64 and the distributions overlap so heavily that the best cutoff you could draw still misclassifies 37% of flowers - barely better than tossing a coin. Significance answers 'is there a difference?'; effect size and overlap answer 'can I use it?'."
+  ),
+  question("Which variables would actually be useful for telling versicolor from virginica?",
+    answer("The petal measurements - Cohen's d of about 2.5-2.9 and only 6-7% misclassified", correct = TRUE),
+    answer("The sepal measurements"),
+    answer("All four are equally useful"),
+    answer("None of them"),
+    message = "Petal.Width (d = 2.93, 6% error) and Petal.Length (d = 2.52, 7% error) separate the two species well; Sepal.Length (d = 1.13, 27%) and Sepal.Width (d = 0.64, 37%) do not. Notice that this matches the PCA exactly: the petal variables had the largest loadings, and PC1 - a general size axis - still left the two species overlapping. The univariate and multivariate views agree, they just arrive there differently."
+  )
+)
+```
+
 ## Summary and Key Takeaways
 
 ### What We've Learned
@@ -665,6 +789,7 @@ ggplot(iris_long, aes(x = Species, y = Value, fill = Species)) +
 4. **Diagnostics**: R² and Q² say nothing about individual observations. Hotelling's T² finds strong outliers within the model plane, DModX finds observations lying far from it. Always look at both before trusting a model.
 5. **Sign conventions**: the direction of a component is arbitrary; interpret loadings relative to each other, not by their absolute sign.
 6. **Biological Interpretation**: Petal measurements are key distinguishing features of iris species
+7. **Significant is not the same as separated**: with 50 flowers per species every measurement differs significantly between versicolor and virginica, yet only the petal variables separate them in practice. A p-value answers "is there a difference?"; effect size and overlap answer "can I actually use it?"
 
 ### Next Steps
 
