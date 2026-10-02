@@ -23,8 +23,10 @@ RUN R -e "pkgs <- c('shiny','learnr','rmarkdown','ggplot2','dplyr','tidyr','read
           if (length(missing)) stop('Missing packages: ', paste(missing, collapse=', ')); \
           cat('All required packages present\n')"
 
-# Copy tutorials
+# Copy the overview pages, and the tutorials (the source of the R package in
+# inst/tutorials) into the year folder they are served from
 COPY FOS/ /srv/FOS/
+COPY inst/tutorials/ /srv/FOS/2026/
 
 # Copy Shiny Server config
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf

@@ -1,0 +1,13 @@
+^LICENSE\.md$
+^FOS_tutorials\.Rproj$
+^\.Rproj\.user$
+^Dockerfile$
+^shiny-server\.conf$
+^FOS$
+^Docs$
+^handouts$
+^make_handouts\.R$
+^handout_shims\.R$
+^\.claude$
+^inst/tutorials/[^/]+/.*\.html$
+^inst/tutorials/[^/]+/.*_files$

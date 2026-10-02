@@ -2,11 +2,38 @@
 
 This repository holds several `learnr` tutorials for the class **Multivariate Data Analysis** within the FOS-course of the LUMC.
 
-The tutorials are separated by year.
+The tutorials are bundled in the R package **FOStutorials** (in `inst/tutorials/`), and can also be served from a Docker container running a Shiny server.
 
-# Installation
+# R package
 
-All tutorials are run from a Docker container running a Shiny server. To build the Docker container run:
+## Installation
+
+Install the package from GitHub. Some dependencies come from Bioconductor (`pcaMethods`, `mixOmics`, `ComplexHeatmap`); `pak` installs these automatically:
+
+```r
+install.packages("pak")
+pak::pak("ricoderks/FOS_tutorials")
+```
+
+## Usage
+
+```r
+library(FOStutorials)
+
+# which tutorials are available?
+list_fos_tutorials()
+
+# start a tutorial
+run_fos_tutorial("Iris-dataset")
+run_fos_tutorial("Food-dataset")
+run_fos_tutorial("NMR_metabolomics")
+```
+
+The tutorials can also be started with `learnr::run_tutorial("Iris-dataset", package = "FOStutorials")`, or from the *Tutorial* pane in RStudio.
+
+# Docker
+
+To build the Docker container run:
 
 ```
 docker build -t fos-course2026 .
@@ -18,7 +45,4 @@ Run the Docker container with (adjust port when needed):
 docker run -d -p 3838:3838 fos-course2026
 ```
 
-# Usage
-
 To access the tutorials go to `http://localhost:3838/FOS/2026/`
-
