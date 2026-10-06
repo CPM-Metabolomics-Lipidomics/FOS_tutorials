@@ -1,6 +1,6 @@
 # Introduction
 
-[![R-install-check](https://github.com/ricoderks/FOS_tutorials/actions/workflows/install-check.yaml/badge.svg)](https://github.com/ricoderks/FOS_tutorials/actions/workflows/install-check.yaml)
+[![R-install-check](https://github.com/CPM-Metabolomics-Lipidomics/FOS_tutorials/actions/workflows/install-check.yaml/badge.svg)](https://github.com/CPM-Metabolomics-Lipidomics/FOS_tutorials/actions/workflows/install-check.yaml)
 
 This repository holds several `learnr` tutorials for the class **Multivariate Data Analysis** within the FOS-course of the LUMC.
 
@@ -14,7 +14,7 @@ Install the package from GitHub. Some dependencies come from Bioconductor (`pcaM
 
 ```r
 install.packages("pak")
-pak::pak("ricoderks/FOS_tutorials")
+pak::pak("CPM-Metabolomics-Lipidomics/FOS_tutorials")
 ```
 
 ## Usage
