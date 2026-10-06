@@ -11,3 +11,4 @@
 ^\.claude$
 ^inst/tutorials/[^/]+/.*\.html$
 ^inst/tutorials/[^/]+/.*_files$
+^\.github$

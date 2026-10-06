@@ -1,5 +1,7 @@
 # Introduction
 
+[![R-install-check](https://github.com/ricoderks/FOS_tutorials/actions/workflows/install-check.yaml/badge.svg)](https://github.com/ricoderks/FOS_tutorials/actions/workflows/install-check.yaml)
+
 This repository holds several `learnr` tutorials for the class **Multivariate Data Analysis** within the FOS-course of the LUMC.
 
 The tutorials are bundled in the R package **FOStutorials** (in `inst/tutorials/`), and can also be served from a Docker container running a Shiny server.
