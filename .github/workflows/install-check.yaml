@@ -1,0 +1,56 @@
+# Check that the FOStutorials package installs (and loads) on Linux, Windows
+# and macOS whenever main is updated.
+name: R-install-check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  install-check:
+    runs-on: ${{ matrix.config.os }}
+
+    name: ${{ matrix.config.os }} (R ${{ matrix.config.r }})
+
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - {os: ubuntu-latest,  r: 'release'}
+          - {os: windows-latest, r: 'release'}
+          - {os: macos-latest,   r: 'release'}
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-pandoc@v2
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.config.r }}
+          use-public-rspm: true
+
+      # Uses pak (as in the README), which also resolves the Bioconductor
+      # Remotes, and installs the package itself from the checkout.
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::testthat, local::.
+
+      - name: Load package and run tests against the installed package
+        shell: Rscript {0}
+        run: |
+          library(FOStutorials)
+          print(list_fos_tutorials())
+          testthat::test_dir("tests/testthat",
+                             package = "FOStutorials",
+                             load_package = "installed",
+                             stop_on_failure = TRUE)
