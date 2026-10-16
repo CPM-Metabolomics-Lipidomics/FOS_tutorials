@@ -804,7 +804,7 @@ permuted ones, and the point where each line meets the y-axis (the
 common rule of thumb is that the model is valid when the R² intercept is below
 0.3 to 0.4 and the Q² intercept is below 0.05.
 
-```{r permutation, exercise=TRUE}
+```{r permutation, exercise=TRUE, fig.width=7, fig.height=6}
 set.seed(2026)
 n_perm <- 100
 ncomp <- 2
