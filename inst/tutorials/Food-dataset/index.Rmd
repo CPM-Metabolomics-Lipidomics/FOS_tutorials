@@ -440,7 +440,7 @@ quiz(
     answer("DModX is just another way of drawing the scores plot"),
     answer("DModX replaces the need for R² and Q²"),
     answer("DModX measures how important each food item is"),
-    message = "The scores plot only shows you the part of an observation that the model DOES capture. DModX measures the residual - the part it misses. An observation can look perfectly ordinary in the scores plot and still have a large DModX, which is why SIMCA shows you both."
+    message = "The scores plot only shows you the part of an observation that the model DOES capture. DModX measures the residual - the part it misses. An observation can look perfectly ordinary in the scores plot and still have a large DModX."
   )
 )
 ```
@@ -450,8 +450,8 @@ quiz(
 <div class="alert alert-info">
 **A word of warning about signs.** The direction of a principal component is
 arbitrary: a component and its mirror image describe exactly the same model. Your
-plot may therefore be flipped compared with the SIMCA handout or with a fellow
-student's screen, and the sign of a loading on its own means nothing.
+plot may therefore be flipped compared with a fellow student's screen, and the 
+sign of a loading on its own means nothing.
 
 What *is* meaningful is the relative arrangement: which foods sit together,
 which sit on opposite sides of the origin, and how far each lies from the
