@@ -173,8 +173,8 @@ cat("Shift range: ", max(ppm), "down to", min(ppm), "ppm\n")
 
 Two things are worth noting about the layout above:
 
-- Tree **D** is missing internodes 6 and 7, and tree **F** is missing internode
-  8. That is why there are 45 samples and not 6 x 8 = 48. Missing samples are
+- Tree **D** is missing internodes 6 and 7, and tree **F** is missing internode 8.
+  That is why there are 45 samples and not 6 x 8 = 48. Missing samples are
   normal in a real experiment, and neither PCA nor PLS-DA requires a balanced
   design.
 - The printed handout describes 57 observations including analytical replicates.
@@ -792,36 +792,86 @@ The permutation test measures how much of your result could have arisen that
 way: shuffle the class labels, refit, and see how good the model becomes on
 nonsense.
 
+The plot below is the same one SIMCA draws under *Validate*. Every point on the
+left is a model fitted to shuffled labels: green for its R² (how well it fits
+the samples it was built on) and blue for its Q² (how well it predicts samples
+that were left out). The x-axis shows how much the shuffled labels still look
+like the real ones, as the correlation between the two. A correlation of 0
+means the labels are completely mixed up, and the real model sits on its own
+at a correlation of 1. The dashed lines run from the real model through the
+permuted ones, and the point where each line meets the y-axis (the
+**intercept**) is what is left when the labels carry no information at all. A
+common rule of thumb is that the model is valid when the R² intercept is below
+0.3 to 0.4 and the Q² intercept is below 0.05.
+
 ```{r permutation, exercise=TRUE}
 set.seed(2026)
 n_perm <- 100
 ncomp <- 2
 
-TSS <- sum((Y_numeric - mean(Y_numeric))^2)
-q2_observed <- 1 - as.numeric(
-  plsr(Y_numeric ~ X_pareto, ncomp = ncomp, validation = "LOO")$validation$PRESS
-)[ncomp] / TSS
+# Fit a PLS model to a class vector y and return its R2 (how well it fits
+# the training data) and Q2 (how well it predicts left-out samples)
+fit_r2_q2 <- function(y) {
+  fit <- plsr(y ~ X_pareto, ncomp = ncomp, validation = "LOO")
+  TSS <- sum((y - mean(y))^2)
+  c(R2 = 1 - sum(residuals(fit)[, 1, ncomp]^2) / TSS,
+    Q2 = 1 - as.numeric(fit$validation$PRESS)[ncomp] / TSS)
+}
 
-q2_permuted <- replicate(n_perm, {
+observed <- fit_r2_q2(Y_numeric)
+
+perm_df <- do.call(rbind, lapply(1:n_perm, function(i) {
   y_shuffled <- sample(Y_numeric)
-  press <- as.numeric(
-    plsr(y_shuffled ~ X_pareto, ncomp = ncomp, validation = "LOO")$validation$PRESS
-  )[ncomp]
-  1 - press / sum((y_shuffled - mean(y_shuffled))^2)
-})
+  # How much do the shuffled labels still look like the real ones?
+  data.frame(Correlation = abs(cor(y_shuffled, Y_numeric)),
+             t(fit_r2_q2(y_shuffled)))
+}))
 
-ggplot(data.frame(Q2 = q2_permuted), aes(x = Q2)) +
-  geom_histogram(bins = 25, fill = "steelblue", colour = "white") +
-  geom_vline(xintercept = q2_observed, colour = "red", linewidth = 1) +
+# The real model sits at correlation 1
+plot_df <- rbind(perm_df,
+                 data.frame(Correlation = 1, t(observed))) |>
+  pivot_longer(c(R2, Q2), names_to = "Statistic", values_to = "Value") |>
+  mutate(Statistic = factor(Statistic, levels = c("R2", "Q2")))
+
+# Regression line through the real model, fitted to the permuted models.
+# Where it crosses the y-axis (correlation 0) is the intercept.
+intercept <- function(stat) {
+  x <- perm_df$Correlation
+  y <- perm_df[[stat]]
+  slope <- sum((x - 1) * (y - observed[stat])) / sum((x - 1)^2)
+  unname(observed[stat] - slope)
+}
+lines_df <- data.frame(Statistic = factor(c("R2", "Q2"), levels = c("R2", "Q2")),
+                       Intercept = c(intercept("R2"), intercept("Q2")),
+                       Observed = observed[c("R2", "Q2")])
+
+ggplot(plot_df, aes(x = Correlation, y = Value,
+                    colour = Statistic, shape = Statistic)) +
+  geom_hline(yintercept = 0, colour = "grey50") +
+  geom_segment(data = lines_df,
+               aes(x = 0, xend = 1, y = Intercept, yend = Observed),
+               linetype = "dashed", colour = "black", inherit.aes = FALSE) +
+  geom_point(size = 3, alpha = 0.8) +
+  scale_colour_manual(values = c(R2 = "#009E00", Q2 = "#0000CC"),
+                      labels = c("R²", "Q²")) +
+  scale_shape_manual(values = c(R2 = 16, Q2 = 15),
+                     labels = c("R²", "Q²")) +
+  scale_x_continuous(limits = c(0, 1)) +
   labs(title = "Permutation test",
-       subtitle = "blue = models fitted to shuffled labels, red = the real model",
-       x = "Q² with 2 components") +
-  theme_minimal()
+       subtitle = paste(n_perm, "permutations,", ncomp,
+                        "components - the real model sits at correlation 1"),
+       x = "Correlation between permuted and original classes",
+       y = "R² and Q²", colour = NULL, shape = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
 
-cat("Observed Q²:      ", round(q2_observed, 3), "\n")
-cat("Permuted Q² mean: ", round(mean(q2_permuted), 3), "\n")
-cat("Permuted Q² max:  ", round(max(q2_permuted), 3), "\n")
-cat("p-value:          ", (sum(q2_permuted >= q2_observed) + 1) / (n_perm + 1), "\n")
+cat("Observed R²:      ", round(observed["R2"], 3), "\n")
+cat("Observed Q²:      ", round(observed["Q2"], 3), "\n")
+cat("Permuted Q² mean: ", round(mean(perm_df$Q2), 3), "\n")
+cat("Permuted Q² max:  ", round(max(perm_df$Q2), 3), "\n")
+cat("R² intercept:     ", round(intercept("R2"), 3), "\n")
+cat("Q² intercept:     ", round(intercept("Q2"), 3), "\n")
+cat("p-value:          ", (sum(perm_df$Q2 >= observed["Q2"]) + 1) / (n_perm + 1), "\n")
 ```
 
 ```{r quiz-permutation, echo=FALSE}
@@ -832,6 +882,13 @@ quiz(
     answer("The permutation test failed"),
     answer("Nothing - permutation tests are not informative for PLS-DA"),
     message = "The real model sits far outside the distribution of models built on shuffled labels (p = 0.01, the smallest value obtainable with 100 permutations). Note that the permuted models have NEGATIVE Q² on average: when the labels are meaningless, the model predicts left-out samples worse than simply guessing the overall mean. That is exactly what you want to see."
+  ),
+  question("The permuted models still reach R² values between 0.14 and 0.46, but their Q² is almost always below zero. The intercepts are 0.18 for R² and -0.42 for Q². What does this tell you?",
+    answer("With so many variables, PLS-DA can fit even random labels to some extent, but those models cannot predict new samples, so we are not modelling noise", correct = TRUE),
+    answer("The R² of the permuted models proves that the real model is overfitted and useless"),
+    answer("R² and Q² always behave the same way, so only one of them is needed"),
+    answer("The intercepts are irrelevant; only the real model's point counts"),
+    message = "R² only measures how well the model describes the samples it was built on, and with 655 variables and 45 samples there is always some structure to fit, even in nonsense labels. That is why the green points stay well above zero. Q² is the honest measure: it drops below zero as soon as the labels are meaningless. Both intercepts are well within the rules of thumb (R² below 0.3 to 0.4, Q² below 0.05), and the steep upward slope of the Q² line shows that the predictive power comes from the real class labels."
   ),
   question("Suppose the permuted models had reached Q² values around 0.7. What would you conclude?",
     answer("That the apparent class separation could easily be a chance artefact and cannot be trusted", correct = TRUE),
