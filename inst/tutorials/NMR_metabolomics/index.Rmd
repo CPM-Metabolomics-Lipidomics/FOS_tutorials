@@ -41,8 +41,7 @@ raw <- suppressMessages(
 # Column 1 = sample name, column 2 = class, columns 3+ = the NMR buckets
 X <- as.matrix(raw[, -(1:2)])
 
-# The bucket names are chemical shifts. Round them to 5 decimals so they match
-# the variable IDs used in SIMCA (e.g. 3.82122 instead of 3.8212199999999998).
+# The bucket names are chemical shifts (e.g. 3.82122 instead of 3.8212199999999998).
 ppm <- round(as.numeric(colnames(X)), 5)
 colnames(X) <- sprintf("%.5f", ppm)
 rownames(X) <- raw[[1]]
@@ -239,8 +238,7 @@ almost anything else you will do.
   inflated to the same importance as real peaks.
 - **Pareto scaling.** Divide by the *square root* of the standard deviation.
   Large variances are reduced more than small ones, but not all the way to
-  equality. This is the usual compromise in metabolomics, and it is what the
-  SIMCA exercise used - so we use it here too.
+  equality. This is the usual compromise in metabolomics.
 
 ```{r scaling-demo, exercise=TRUE}
 # Take the most variable bucket in the whole spectrum (3.82122, which will turn
@@ -335,7 +333,7 @@ quiz(
     answer("It is overfitted, because 7 components is too many"),
     answer("It is useless, because R² is below 1"),
     answer("It cannot be judged without the class labels"),
-    message = "R²cum = 0.86 means 86% of the (Pareto-scaled) data is described, and Q²cum = 0.70 means the model still predicts left-out samples well. In metabolomics a Q² around 0.5 is already considered good. Note also that Q² is still rising at component 7, so the model has not yet started fitting noise. SIMCA reports about 0.85 and 0.71 for the same data - reassuringly close, given that R and SIMCA cross-validate slightly differently."
+    message = "R²cum = 0.86 means 86% of the (Pareto-scaled) data is described, and Q²cum = 0.70 means the model still predicts left-out samples well. In metabolomics a Q² around 0.5 is already considered good. Note also that Q² is still rising at component 7, so the model has not yet started fitting noise."
   ),
   question("PC1 alone explains 35% of the variance. Does that mean PC1 is the difference between the two genotypes?",
     answer("Not necessarily - PCA is unsupervised and knows nothing about the classes", correct = TRUE),
@@ -492,7 +490,7 @@ quiz(
     answer("On PC1, the first component"),
     answer("It does not show up at all"),
     answer("Only on PC3"),
-    message = "The class separation is highly significant on PC2 (t = 5.7, p = 0.0000014) but not on PC1 (p = 0.17). This is exactly what the SIMCA handout describes. The fact that the class separation appears on the SECOND component tells you the genotype is not the biggest source of variation here - growth stage is. (PC3 also separates the classes, but it carries far less variance.)"
+    message = "The class separation is highly significant on PC2 (t = 5.7, p = 0.0000014) but not on PC1 (p = 0.17). The fact that the class separation appears on the SECOND component tells you the genotype is not the biggest source of variation here - growth stage is. (PC3 also separates the classes, but it carries far less variance.)"
   ),
   question("Is the internode trend equally strong in both genotypes?",
     answer("No - it is much more pronounced in MYB76 than in the wild type", correct = TRUE),
@@ -540,13 +538,9 @@ data.frame(
 )
 ```
 
-Compare that list with the variable IDs quoted in the SIMCA answers - 2.45239,
-2.15044, 2.47252 and 2.13031 around 2.1-2.5 ppm, and 3.82122 and 3.84135 around
-3.8 ppm. You should recognise them.
-
 ## PCA-Class
 
-Before fitting a discriminant model, SIMCA asks you to check that each class is
+Before fitting a discriminant model, you need to check that each class is
 *internally* homogeneous. If a class splits into sub-clusters, a PLS-DA model
 built on it may end up modelling that sub-structure instead of the real
 difference. PCA-Class simply means: fit a separate PCA per class.
@@ -645,7 +639,7 @@ data.frame(
 
 ```{r plsda-q2, exercise=TRUE}
 # pls::plsr fits the same model but reports PRESS, which gives us the
-# SIMCA-style Q2. Y_numeric is the 0/1 version of the class label.
+# Q2. Y_numeric is the 0/1 version of the class label.
 plsr_model <- plsr(Y_numeric ~ X_pareto, ncomp = 5, validation = "LOO")
 
 PRESS <- as.numeric(plsr_model$validation$PRESS)
@@ -676,7 +670,7 @@ quiz(
     answer("Completely - a Q² of 0.94 cannot be wrong"),
     answer("Not at all - supervised methods are always meaningless"),
     answer("It cannot be judged without more samples"),
-    message = "These are genuinely good numbers, and SIMCA reports something very similar (Q² = 0.95 at five components). But remember the fundamental problem: with 14 times more variables than samples, PLS-DA can separate almost ANY two groups, including randomly labelled ones. A high Q² is necessary but not sufficient. The permutation test in the next section is what turns 'looks good' into 'is real'."
+    message = "These are genuinely good numbers. But remember the fundamental problem: with 14 times more variables than samples, PLS-DA can separate almost ANY two groups, including randomly labelled ones. A high Q² is necessary but not sufficient. The permutation test in the next section is what turns 'looks good' into 'is real'."
   ),
   question("Why does the PLS-DA model reach a much higher Q² than the PCA model did?",
     answer("Because PLS-DA is told which samples belong to which class and optimises for exactly that", correct = TRUE),
@@ -740,8 +734,7 @@ ggplot(vip_df, aes(x = ppm, y = VIP)) +
 ```
 
 ```{r biomarker-boxplot, exercise=TRUE, exercise.setup="prep-plsda"}
-# Look at the raw data for the strongest candidate, exactly as you would
-# double-click a variable in SIMCA
+# Look at the raw data for the strongest candidate
 top_bucket <- rownames(vip_scores)[which.max(vip_scores[, 5])]
 
 biomarker_df <- data.frame(meta, Intensity = X[, top_bucket])
@@ -772,7 +765,7 @@ quiz(
     answer("It separates the classes perfectly, with no overlap"),
     answer("It shows no difference between the classes"),
     answer("It only changes with internode and not with class"),
-    message = "The boxplot shows a clear average difference, but with overlap: some MYB76 samples look like wild type ones. The second plot explains why - the intensity also depends on where along the stem the sample came from. This is the same conclusion the SIMCA answers reach: the top-VIP variables also carry the internode trend. In a follow-up experiment you would want to account for developmental stage rather than treat these as clean genotype markers."
+    message = "The boxplot shows a clear average difference, but with overlap: some MYB76 samples look like wild type ones. The second plot explains why - the intensity also depends on where along the stem the sample came from. The top-VIP variables also carry the internode trend. In a follow-up experiment you would want to account for developmental stage rather than treat these as clean genotype markers."
   ),
   question("Ninety-one buckets have VIP > 1. Are those 91 biomarkers?",
     answer("No - they are candidates, and neighbouring buckets often belong to the same metabolite", correct = TRUE),
@@ -792,7 +785,7 @@ The permutation test measures how much of your result could have arisen that
 way: shuffle the class labels, refit, and see how good the model becomes on
 nonsense.
 
-The plot below is the same one SIMCA draws under *Validate*. Every point on the
+The plot below shows the result of the permutation test. Every point on the
 left is a model fitted to shuffled labels: green for its R² (how well it fits
 the samples it was built on) and blue for its Q² (how well it predicts samples
 that were left out). The x-axis shows how much the shuffled labels still look
