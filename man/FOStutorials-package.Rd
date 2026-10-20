@@ -9,12 +9,12 @@
 Interactive learnr tutorials used in the class Multivariate Data Analysis of the FOS course of the LUMC. The tutorials cover principal component analysis (PCA) on the iris and food data sets, and PCA, PCA-class and PLS-DA on an NMR metabolomics data set.
 }
 \author{
-\strong{Maintainer}: Rico Derks \email{r.j.e.derks@lumc.nl}
+\strong{Maintainer}: Rico Derks \email{r.j.e.derks@lumc.nl} (\href{https://orcid.org/0000-0002-6363-0857}{ORCID})
 
 Authors:
 \itemize{
-  \item Rico Derks \email{r.j.e.derks@lumc.nl}
-  \item Aswin Verhoeven
+  \item Rico Derks \email{r.j.e.derks@lumc.nl} (\href{https://orcid.org/0000-0002-6363-0857}{ORCID})
+  \item Aswin Verhoeven (\href{https://orcid.org/0000-0003-0373-9372}{ORCID})
 }
 
 }
