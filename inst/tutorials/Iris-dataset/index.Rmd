@@ -312,7 +312,7 @@ quiz(
     answer("3 clusters", correct = TRUE),
     answer("1 cluster"),
     answer("No clear clusters"),
-    message = "There are 3 distinct clusters corresponding to the 3 iris species, with setosa being most clearly separated."
+    message = "There are 3 distinct clusters corresponding to the 3 iris species, with setosa being most clearly separated. Adding colors or shapes to the scores plot can help a lot to identify clusters in the scores plot."
   )
 )
 ```
@@ -452,7 +452,7 @@ quiz(
     answer("Yes, always remove anything outside the ellipse"),
     answer("Yes, but only if they belong to setosa"),
     answer("It makes no difference either way"),
-    message = "By definition roughly 5% of the observations fall outside a 95% ellipse even when nothing is wrong - with 150 flowers you expect about 7, and here there are 6. A common rule of thumb for DModX is that a value needs to be about twice the model average before you call it an outlier, and even then you should check the raw data first. Removing observations just because they are extreme is a good way to fool yourself."
+    message = "By definition roughly 5% of the observations fall outside a 95% ellipse even when nothing is wrong - with 150 flowers you expect about 7, and here there are 6. A common rule of thumb for DModX is that a value needs to be about 2-3x the model average before you call it an outlier, and even then you should check the raw data first. Removing observations just because they are extreme is a good way to fool yourself."
   )
 )
 ```
@@ -549,7 +549,7 @@ quiz(
     answer("Sepal.Length and Sepal.Width"),
     answer("Sepal.Width on its own"),
     answer("All four variables equally"),
-    message = "PC1 carries 73% of the variance and does most of the separating. Its loadings are Petal.Length 0.58, Petal.Width 0.57, Sepal.Length 0.52 and Sepal.Width -0.27. The two petal measurements are the largest, and note that Sepal.Width has the opposite sign: setosa has the smallest petals but the widest sepals of the three species."
+    message = "PC1 carries 73% of the variance and does most of the separating. The most important variables for PC1 are the variables which are close to the PC1 axis and have a 'large' value. The loadings for PC1 are Petal.Length 0.58, Petal.Width 0.57, Sepal.Length 0.52 and Sepal.Width -0.27. The two petal measurements are the largest, and note that Sepal.Width has the opposite sign: setosa has the smallest petals but the widest sepals of the three species."
   )
 )
 ```
@@ -823,15 +823,15 @@ as.data.frame(effect)
 ```{r quiz-univariate-results, echo=FALSE}
 quiz(
   question("Sepal.Width differs significantly between the two species (p = 0.007). How well does it separate them?",
-    answer("Badly - the best possible single cutoff still gets 37% of the flowers wrong", correct = TRUE),
     answer("Perfectly - a significant p-value means the groups are separated"),
     answer("It cannot be judged from these numbers"),
     answer("Better than Petal.Width, because its p-value is smaller"),
+    answer("Badly - the best possible single cutoff still gets 37% of the flowers wrong", correct = TRUE),
     message = "This is the single most important idea in this section. With 50 flowers per group, even a small shift in means becomes 'significant': Sepal.Width has a Cohen's d of only 0.64 and the distributions overlap so heavily that the best cutoff you could draw still misclassifies 37% of flowers - barely better than tossing a coin. Significance answers 'is there a difference?'; effect size and overlap answer 'can I use it?'."
   ),
   question("Which variables would actually be useful for telling versicolor from virginica?",
-    answer("The petal measurements - Cohen's d of about 2.5-2.9 and only 6-7% misclassified", correct = TRUE),
     answer("The sepal measurements"),
+    answer("The petal measurements - Cohen's d of about 2.5-2.9 and only 6-7% misclassified", correct = TRUE),
     answer("All four are equally useful"),
     answer("None of them"),
     message = "Petal.Width (d = 2.93, 6% error) and Petal.Length (d = 2.52, 7% error) separate the two species well; Sepal.Length (d = 1.13, 27%) and Sepal.Width (d = 0.64, 37%) do not. Notice that this matches the PCA exactly: the petal variables had the largest loadings, and PC1 - a general size axis - still left the two species overlapping. The univariate and multivariate views agree, they just arrive there differently."
