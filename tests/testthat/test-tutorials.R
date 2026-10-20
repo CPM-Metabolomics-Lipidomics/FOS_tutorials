@@ -1,13 +1,13 @@
 test_that("all tutorials are found by learnr", {
   tutorials <- list_fos_tutorials()
   expect_setequal(tutorials$name,
-                  c("Iris-dataset", "Food-dataset", "NMR_metabolomics"))
+                  c("Iris-dataset", "Food-dataset", "NMR-metabolomics"))
 })
 
 test_that("the data files are installed next to the tutorials", {
   expect_true(nzchar(system.file("tutorials", "Food-dataset", "foods.csv",
                                  package = "FOStutorials")))
-  expect_true(nzchar(system.file("tutorials", "NMR_metabolomics",
+  expect_true(nzchar(system.file("tutorials", "NMR-metabolomics",
                                  "metabolomics.xlsx",
                                  package = "FOStutorials")))
 })

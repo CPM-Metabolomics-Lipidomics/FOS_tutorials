@@ -8,7 +8,7 @@ run_fos_tutorial(name, ...)
 }
 \arguments{
 \item{name}{Name of the tutorial, e.g. \code{"Iris-dataset"}, \code{"Food-dataset"}
-or \code{"NMR_metabolomics"}.}
+or \code{"NMR-metabolomics"}.}
 
 \item{...}{Further arguments passed on to \code{\link[learnr:run_tutorial]{learnr::run_tutorial()}}.}
 }

@@ -28,7 +28,7 @@ list_fos_tutorials()
 # start a tutorial
 run_fos_tutorial("Iris-dataset")
 run_fos_tutorial("Food-dataset")
-run_fos_tutorial("NMR_metabolomics")
+run_fos_tutorial("NMR-metabolomics")
 ```
 
 The tutorials can also be started with `learnr::run_tutorial("Iris-dataset", package = "FOStutorials")`, or from the *Tutorial* pane in RStudio.

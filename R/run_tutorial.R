@@ -19,7 +19,7 @@ list_fos_tutorials <- function() {
 #' see which tutorials are available.
 #'
 #' @param name Name of the tutorial, e.g. `"Iris-dataset"`, `"Food-dataset"`
-#'   or `"NMR_metabolomics"`.
+#'   or `"NMR-metabolomics"`.
 #' @param ... Further arguments passed on to [learnr::run_tutorial()].
 #'
 #' @return Called for its side effect of starting the tutorial.
