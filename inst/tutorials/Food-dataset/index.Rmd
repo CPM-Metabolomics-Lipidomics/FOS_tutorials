@@ -1,6 +1,7 @@
 ---
 title: "Multivariate Data Analysis: Food data set"
 subtitle: "Principal Component Analysis with R"
+description: "PCA of food consumption in 16 European countries: interpret scores and loadings, detect outliers, explore PC1 vs PC3 and compare with hierarchical clustering."
 author: "Rico Derks, Aswin Verhoeven"
 output:
   learnr::tutorial:

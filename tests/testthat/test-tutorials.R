@@ -15,3 +15,8 @@ test_that("the data files are installed next to the tutorials", {
 test_that("run_fos_tutorial() rejects unknown tutorials", {
   expect_error(run_fos_tutorial("does-not-exist"), "must be one of")
 })
+
+test_that("all tutorials have a description", {
+  tutorials <- list_fos_tutorials()
+  expect_true(all(!is.na(tutorials$description) & nzchar(tutorials$description)))
+})

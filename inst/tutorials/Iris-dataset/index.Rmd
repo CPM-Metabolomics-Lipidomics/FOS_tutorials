@@ -1,6 +1,7 @@
 ---
 title: "Multivariate Data Analysis: IRIS Dataset"
 subtitle: "Principal Component Analysis with R"
+description: "Introduction to PCA in R with the classic iris data: scores, loadings, R2/Q2, outliers (Hotelling's T² and DModX) and a comparison with univariate methods."
 author: "Rico Derks, Aswin Verhoeven"
 output:
   learnr::tutorial:

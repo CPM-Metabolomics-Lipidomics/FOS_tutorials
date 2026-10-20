@@ -1,6 +1,7 @@
 ---
 title: "Multivariate Data Analysis: NMR Metabolomics"
 subtitle: "PCA, PCA-Class and PLS-DA on poplar tree extracts"
+description: "Analysis of ¹H-NMR data from poplar tree internodes: Pareto scaling, PCA, PCA-Class and PLS-DA with permutation testing to find biomarkers."
 author: "Rico Derks, Aswin Verhoeven"
 output:
   learnr::tutorial:
