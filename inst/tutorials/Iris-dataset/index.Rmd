@@ -47,10 +47,6 @@ iris_no_setosa <- iris_data |>
 
 ## How to use this tutorial
 
-Everything happens in your browser - you do not need R installed, and you cannot
-break anything. Nothing you type here touches your own computer or the data
-files.
-
 **The grey boxes are live R code.** Press **Run Code** to execute the code in a
 box and see the output appear underneath it. You are encouraged to change the
 code and run it again: change a colour, plot PC2 against PC3 instead of PC1
@@ -309,7 +305,7 @@ quiz(
     answer("The position of each observation in the PC space", correct = TRUE),
     answer("The importance of each variable"),
     answer("The raw data values"),
-    message = "The scores plot shows how each individual observation (iris specimen) is positioned in the new principal component coordinate system."
+    message = "The scores plot shows how each individual observation (iris specimen) is positioned in the new principal component coordinate system. You can observe which samples differ from each other and which samples are more similar."
   ),
   question("How many distinct clusters can you identify in the scores plot?",
     answer("2 clusters"),
@@ -330,7 +326,23 @@ look at two diagnostic plots.
 
 **Hotelling's T²** finds *strong* outliers: observations that lie far from the
 centre **within** the model plane. In a scores plot this is drawn as a
-confidence ellipse - anything outside it is a candidate strong outlier.
+confidence ellipse - anything outside it is a candidate strong outlier. 
+Observations which are far from the centre have a lot of leverage.
+
+<div class="alert alert-info">
+**Leverage.** Think of a seesaw: a child sitting close to the pivot hardly
+moves it, but the same child sitting at the very end can tip it over. A
+principal component behaves the same way. Observations near the centre of the
+scores plot have little influence on the direction of a component, but an
+observation far from the centre - one with a high T² - can pull the component
+towards itself. We say that such an observation has a high **leverage**.
+
+High leverage is not automatically a problem. If the far-away observation
+follows the same pattern as the rest of the data, it only confirms the model.
+It becomes a problem when it does not, because then a single sample decides
+the direction of a component. That is why observations outside the ellipse
+deserve a closer look.
+</div>
 
 ```{r hotelling, exercise=TRUE, exercise.setup='pca-basic', fig.width=7, fig.height=6}
 scores_df <- data.frame(
@@ -429,10 +441,10 @@ head(dmodx_df[order(-dmodx_df$DModX), ], 5)
 ```{r quiz-outliers, echo=FALSE}
 quiz(
   question("What is the difference between Hotelling's T² and DModX?",
-    answer("T² finds observations far from the centre within the model plane; DModX finds observations far away from the plane", correct = TRUE),
-    answer("They measure exactly the same thing"),
     answer("T² is for variables, DModX is for observations"),
     answer("T² is calculated on the loadings, DModX on the scores"),
+    answer("T² finds observations far from the centre within the model plane; DModX finds observations far away from the plane", correct = TRUE),
+    answer("They measure exactly the same thing"),
     message = "T² measures distance from the origin WITHIN the model (strong outliers, visible in the scores plot). An observation far away from the center can have a high leverage. DModX measures the residual, i.e. the distance from the model plane (moderate outliers, invisible in a scores plot) High DModX for an observation means that the model describes this observation poorly. You need both!"
   ),
   question("A few observations lie just outside the 95% T² ellipse. Should you remove them?",
@@ -530,10 +542,10 @@ quiz(
     answer("How original variables contribute to each PC", correct = TRUE),
     answer("The correlation between species"),
     answer("The raw measurement values"),
-    message = "The loadings plot shows how each original variable (Sepal.Length, Sepal.Width, etc.) contributes to the principal components."
+    message = "The loadings plot shows how each original variable (Sepal.Length, Sepal.Width, etc.) contributes to the principal components. You can use the loadings plot to describe the separation in scores plot (i.e. which variables are causing this separation/have the most influence on this separation)."
   ),
   question("Based on the loadings plot, which variables are most important for separating the clusters in the scores plot?",
-    answer("Petal.Length and Petal.Width", correct = TRUE),
+    answer("Mainly Petal.Length and Petal.Width, but Sepal.Length is also quite important.", correct = TRUE),
     answer("Sepal.Length and Sepal.Width"),
     answer("Sepal.Width on its own"),
     answer("All four variables equally"),
@@ -544,7 +556,8 @@ quiz(
 
 ## Analysis Without Setosa
 
-Let's examine what happens when we remove the clearly separated setosa species:
+Can we separate *Versicolor* and *Virginica*? Let's examine what happens when 
+we remove the clearly separated *Setosa* species:
 
 ```{r pca-no-setosa, exercise=TRUE, exercise.setup='pca-basic'}
 # PCA without setosa
@@ -586,19 +599,57 @@ ggplotly(p, tooltip = c("text", "colour", "x", "y"))
 
 ### Comparing Models
 
-```{r compare-models, exercise=TRUE, exercise.setup='pca-no-setosa'}
-# Compare the loadings between full data and without setosa
-loadings_no_setosa <- data.frame(
-  Variable = rownames(pca_no_setosa$rotation),
-  PC1 = pca_no_setosa$rotation[,1],
-  PC2 = pca_no_setosa$rotation[,2]
-)
+Put the two models side by side. The direction of a component is arbitrary
+(see the warning in the loadings section), so the code first flips the signs
+where needed, so that PC1 and PC2 point the same way in both plots. This makes
+them easier to compare and changes nothing about the models.
 
-print("Loadings with all species:")
-print(round(pca_result$rotation[,1:2], 3))
+```{r compare-models, exercise=TRUE, exercise.setup='pca-no-setosa', fig.width=7, fig.height=6}
+# The sign of a component is arbitrary. Flip PC1 so that Petal.Length is
+# positive and PC2 so that Sepal.Width is positive, in both models, so the two
+# plots are oriented the same way on every computer.
+flip_to <- function(model, variable) {
+  for (k in 1:2) {
+    if (model$rotation[variable[k], k] < 0) {
+      model$rotation[, k] <- -model$rotation[, k]
+      model$x[, k]        <- -model$x[, k]
+    }
+  }
+  model
+}
+pca_all       <- flip_to(pca_result,    c("Petal.Length", "Sepal.Width"))
+pca_no_setosa <- flip_to(pca_no_setosa, c("Petal.Length", "Sepal.Width"))
 
-print("\nLoadings without setosa:")
-print(round(pca_no_setosa$rotation[,1:2], 3))
+# Same colour per species in both plots
+species_colours <- c(setosa = "#00AFBB", versicolor = "#E7B800", virginica = "#FC4E07")
+
+p_all <- fviz_pca_biplot(pca_all,
+                         col.ind = iris_data$Species,
+                         palette = species_colours,
+                         pointshape = 19,
+                         addEllipses = TRUE,
+                         label = "var",
+                         col.var = "black",
+                         repel = TRUE,
+                         legend.title = "Species",
+                         title = "All three species") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+p_no_setosa <- fviz_pca_biplot(pca_no_setosa,
+                               col.ind = iris_no_setosa$Species,
+                               palette = species_colours[c("versicolor", "virginica")],
+                               pointshape = 19,
+                               addEllipses = TRUE,
+                               label = "var",
+                               col.var = "black",
+                               repel = TRUE,
+                               legend.title = "Species",
+                               title = "Without setosa") +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+ggpubr::ggarrange(p_all, p_no_setosa, ncol = 2)
 ```
 
 ### Quiz: Model Comparison
@@ -612,12 +663,19 @@ quiz(
     answer("It becomes less clear"),
     message = "Setosa no longer dominates the model, so the axes now describe the remaining two species. But look carefully at the scores plot: there is still substantial overlap between versicolor and virginica. PCA is unsupervised - it looks for the largest variance, not for the difference between your groups, and there is no guarantee those are the same thing."
   ),
-  question("Look at the loadings of the model without setosa. How would you best describe PC1?",
+  question("Look at the biplot of the model without setosa. How would you best describe PC1?",
     answer("A general 'size' axis: petal length, petal width and sepal length all load strongly in the same direction", correct = TRUE),
     answer("An axis driven by Sepal.Width alone"),
     answer("An axis contrasting petal measurements against sepal measurements"),
     answer("An axis with no sensible interpretation"),
-    message = "Without setosa, PC1 covers 73.9% of the variance and all four variables load in the SAME direction, with magnitudes Petal.Length 0.54, Petal.Width 0.51, Sepal.Length 0.51 and Sepal.Width 0.44. (Whether R prints these as positive or negative is arbitrary - only the relative signs matter.) So PC1 is essentially overall flower size, with the three largest contributions coming from petal length, petal width and sepal length. Virginica flowers are simply bigger than versicolor ones, which is why no single variable separates them cleanly."
+    message = "Without setosa, PC1 covers 73.9% of the variance and all four variables load in the SAME direction, with magnitudes Petal.Length 0.54, Petal.Width 0.51, Sepal.Length 0.51 and Sepal.Width 0.44. (We flipped the signs so both plots point the same way; the sign itself is arbitrary - only the relative signs matter.) So PC1 is essentially overall flower size, with the three largest contributions coming from petal length, petal width and sepal length. Virginica flowers are simply bigger than versicolor ones, which is why no single variable separates them cleanly."
+  ),
+  question("Look at the biplot of the model without setosa. What does the variable Sepal.Width explain?",
+    answer("The difference between versicolor and virginica"),
+    answer("Nothing - Sepal.Width has no influence on this model"),
+    answer("The same thing as the petal variables"),
+    answer("The variation within versicolor and virginica", correct = TRUE),
+    message = "In the model without setosa, the Sepal.Width arrow points mainly along PC2, while the two species are separated (as far as they are) along PC1. Along PC2, both the versicolor and the virginica ellipse are stretched out: flowers of the same species differ from each other in sepal width. The numbers confirm this: about 90% of the variation in Sepal.Width, and of PC2, is variation within the species, not between them. So Sepal.Width mostly describes how individual flowers differ inside each species, and adds little to telling the two species apart."
   )
 )
 ```
@@ -625,6 +683,8 @@ quiz(
 ## Alternative Approaches
 
 If multivariate methods don't provide clear separation, what univariate approaches could you use?
+
+### Quiz: Univariate alternatives
 
 ```{r quiz-univariate, echo=FALSE}
 question("Suppose PCA does not separate versicolor from virginica well enough. Which univariate approaches could you use instead? (select all that apply)",
@@ -636,6 +696,8 @@ question("Suppose PCA does not separate versicolor from virginica well enough. W
   message = "The standard fallback is to go variable by variable: a t-test for two groups, or a one-way ANOVA when there are three or more. Because you then perform one test per variable, you must correct for multiple testing (for example Bonferroni or Benjamini-Hochberg), otherwise you will find 'significant' differences by chance alone. With only 4 variables that is a minor issue, but in metabolomics you often have many features, and then it matters a great deal!"
 )
 ```
+
+### Boxplots per variable
 
 The boxplots below are the visual version of exactly that univariate comparison:
 

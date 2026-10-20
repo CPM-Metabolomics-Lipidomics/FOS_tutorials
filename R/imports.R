@@ -11,6 +11,7 @@ ignore_unused_imports <- function() {
   DT::datatable
   factoextra::fviz_pca_biplot
   ggplot2::ggplot
+  ggpubr::ggarrange
   knitr::kable
   mixOmics::plsda
   pcaMethods::pca

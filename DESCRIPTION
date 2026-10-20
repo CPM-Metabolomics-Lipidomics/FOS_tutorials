@@ -1,7 +1,7 @@
 Package: FOStutorials
 Title: Learnr Tutorials for Multivariate Data Analysis in the LUMC FOS
     Course
-Version: 0.1.0
+Version: 0.1.0.9003
 Authors@R: c(
     person("Rico", "Derks", , "r.j.e.derks@lumc.nl", role = c("aut", "cre"),
            comment = c(ORCID = "0000-0002-6363-0857")),
@@ -13,7 +13,7 @@ Description: Interactive learnr tutorials used in the class Multivariate
     principal component analysis (PCA) on the iris and food data sets, and
     PCA, PCA-class and PLS-DA on an NMR metabolomics data set.
 License: MIT + file LICENSE
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Imports: 
@@ -24,6 +24,7 @@ Imports:
     DT,
     factoextra,
     ggplot2,
+    ggpubr,
     knitr,
     learnr,
     mixOmics,
