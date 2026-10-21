@@ -107,8 +107,7 @@ plsda_scores_df <- data.frame(
 
 ## How to use this tutorial
 
-This works exactly like the IRIS and Food tutorials. Everything runs in your
-browser and you cannot break anything.
+This works exactly like the IRIS and Food tutorials.
 
 The grey boxes are live R code: press **Run Code** to execute a box, **Start
 Over** to restore the original code, and **Solution** (where offered) to see one
@@ -125,8 +124,8 @@ seconds to fit, so give a code box a moment after you press Run Code.
 ## Background
 
 A gene encoding a MYB transcription factor with unknown function, **PttMYB76**,
-was selected from a library of poplar trees for metabolomic characterisation of
-the growth process.
+was selected from a library of poplar trees (NL: populier) for metabolomic 
+characterisation of the growth process.
 
 PttMYB76 is believed to affect different routes in the **phenylpropanoid
 pathway**, which leads to the formation of S- and G-lignin, flavonoids and
@@ -140,6 +139,19 @@ between two successive leaves. Sampling started at internode 1 (the top of the
 plant, youngest tissue) and ended at internode 8 (the bottom, oldest tissue).
 The apex was removed before sampling. The internode number is therefore a
 **growth- or time-related axis**.
+
+![A poplar plant, showing the apex and internode 1. The internodes run from the top of the plant (youngest tissue) down the stem; the apex was removed before sampling.](images/poplar_tree.png){width=220px}
+
+```{css, echo=FALSE}
+/* style the figure caption and keep it apart from the next paragraph */
+.figcaption {
+  font-style: italic;
+  font-size: 90%;
+  color: #555;
+  margin-top: 0.5em;
+  margin-bottom: 1.5em;
+}
+```
 
 Six 12-week-old trees were used:
 
