@@ -93,7 +93,9 @@ scores_df <- data.frame(
 
 ```{r prep-plsda}
 # PLS-DA model, shared by the exercises below.
-set.seed(2026)
+# (No set.seed() here: PLS-DA is deterministic, and a fixed seed in a shared
+# setup chunk gives every interactive plot built on it the same HTML id, so
+# only the first of those plots would be drawn.)
 plsda_model <- mixOmics::plsda(X_pareto, meta$Class, ncomp = 5, scale = FALSE)
 
 vip_scores <- mixOmics::vip(plsda_model)
@@ -692,38 +694,73 @@ Before fitting a discriminant model, you need to check that each class is
 built on it may end up modelling that sub-structure instead of the real
 difference. PCA-Class simply means: fit a separate PCA per class.
 
-```{r pca-class, exercise=TRUE}
-run_class_pca <- function(class_name) {
-  keep <- meta$Class == class_name
-  p <- prcomp(pareto_scale(X[keep, ]), center = FALSE, scale. = FALSE)
-  data.frame(
-    PC1 = p$x[, 1],
-    PC2 = p$x[, 2],
-    meta[keep, ],
-    R2_1 = round((p$sdev^2 / sum(p$sdev^2))[1], 3)
+```{r pca-class, exercise=TRUE, fig.width=7, fig.height=6}
+# Fit a separate PCA per class, on Pareto-scaled data of that class only
+set.seed(2026)  # Q2 uses a random cross-validation split
+
+class_pca <- function(class_name) {
+  keep  <- meta$Class == class_name
+  Xc    <- pareto_scale(X[keep, ])
+  model <- pcaMethods::pca(Xc, method = "svd", nPcs = 5,
+                           scale = "none", center = FALSE)
+  list(
+    scores  = data.frame(PC1 = pcaMethods::scores(model)[, 1],
+                         PC2 = pcaMethods::scores(model)[, 2],
+                         meta[keep, ]),
+    R2      = model@R2,
+    R2cum   = R2cum(model),
+    Q2cum   = Q2(model, Xc, fold = 7, verbose = FALSE)
   )
 }
 
-class_scores <- rbind(run_class_pca("MYB76"), run_class_pca("WildType"))
+models <- list(WildType = class_pca("WildType"),
+               MYB76    = class_pca("MYB76"))
 
-ggplot(class_scores, aes(x = PC1, y = PC2, colour = Internode, shape = Tree)) +
-  geom_point(size = 3) +
-  facet_wrap(~Class, scales = "free") +
-  scale_colour_gradient(low = "#B2DF8A", high = "#1B5E20", breaks = c(1, 4, 8)) +
-  labs(title = "PCA-Class: a separate model per genotype") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
+# Fixed colours per tree, so both plots use the same colours
+tree_colours <- c(A = "#1B9E77", B = "#D95F02", C = "#7570B3",
+                  D = "#E7298A", E = "#66A61E", F = "#E6AB02")
 
-# Put numbers on the two patterns
-class_scores |>
-  group_by(Class) |>
-  summarise(cor_PC1_internode = round(cor(PC1, Internode), 2),
-            R2_PC1 = first(R2_1), .groups = "drop")
+class_plot <- function(res) {
+  p <- ggplot(res$scores, aes(x = PC1, y = PC2, colour = Tree,
+                              # text shown when you hover over a point
+                              text = paste0("Sample: ", Sample,
+                                            "<br>Tree: ", Tree,
+                                            "<br>Internode: ", Internode))) +
+    geom_hline(yintercept = 0, colour = "grey") +
+    geom_vline(xintercept = 0, colour = "grey") +
+    geom_point(size = 3) +
+    scale_colour_manual(values = tree_colours) +
+    labs(x = paste0("PC1 (", round(res$R2[1] * 100, 1), "%)"),
+         y = paste0("PC2 (", round(res$R2[2]* 100, 1), "%)")) +
+    theme_minimal()
+  ggplotly(p, tooltip = "text")
+}
 
-# Does one tree behave differently from its siblings?
-class_scores |>
-  group_by(Class, Tree) |>
-  summarise(mean_PC2 = round(mean(PC2), 2), .groups = "drop")
+# The two models side by side, each with its own axis titles
+subplot(class_plot(models$WildType), class_plot(models$MYB76),
+        titleX = TRUE, titleY = TRUE, margin = 0.07) |>
+  layout(
+    title = list(text = "PCA-Class: a separate model per genotype",
+                 x = 0, xanchor = "left"),
+    annotations = list(
+      list(text = "WildType", x = 0.22, y = 1.0, xref = "paper", yref = "paper",
+           xanchor = "center", yanchor = "bottom", showarrow = FALSE),
+      list(text = "MYB76", x = 0.78, y = 1.0, xref = "paper", yref = "paper",
+           xanchor = "center", yanchor = "bottom", showarrow = FALSE)
+    ),
+    margin = list(t = 70),
+    legend = list(orientation = "h", x = 0, y = -0.15)
+  )
+
+# Model quality of both class models
+data.frame(
+  Component      = paste0("PC", 1:5),
+  WildType_R2cum = round(models$WildType$R2cum, 3),
+  WildType_Q2cum = round(models$WildType$Q2cum, 3),
+  MYB76_R2cum    = round(models$MYB76$R2cum, 3),
+  MYB76_Q2cum    = round(models$MYB76$Q2cum, 3),
+  row.names      = NULL
+)
 ```
 
 ```{r quiz-pca-class, echo=FALSE}
@@ -813,113 +850,18 @@ data.frame(
 ```{r quiz-plsda-quality, echo=FALSE}
 quiz(
   question("Q²cum reaches 0.94 and the balanced error rate drops to 0 at three components. How much do you trust this model?",
-    answer("It looks excellent, but with 655 variables and 45 samples it must be validated further before I believe it", correct = TRUE),
     answer("Completely - a Q² of 0.94 cannot be wrong"),
     answer("Not at all - supervised methods are always meaningless"),
     answer("It cannot be judged without more samples"),
+    answer("It looks excellent, but with 655 variables and 45 samples it must be validated further before I believe it", correct = TRUE),
     message = "These are genuinely good numbers. But remember the fundamental problem: with 14 times more variables than samples, PLS-DA can separate almost ANY two groups, including randomly labelled ones. A high Q² is necessary but not sufficient. The permutation test in the next section is what turns 'looks good' into 'is real'."
   ),
   question("Why does the PLS-DA model reach a much higher Q² than the PCA model did?",
-    answer("Because PLS-DA is told which samples belong to which class and optimises for exactly that", correct = TRUE),
     answer("Because PLS-DA uses more components"),
+    answer("The two Q² values measure different things.", correct = TRUE),
     answer("Because PLS-DA uses a better scaling"),
     answer("Because the PCA was fitted incorrectly"),
     message = "The two Q² values measure different things. The PCA Q² asks how well the model predicts the spectra themselves; the PLS-DA Q² asks how well it predicts the class label - which is the quantity it was built to predict. Comparing them directly is not meaningful, which is another reason a supervised model needs a validation of its own."
-  )
-)
-```
-
-## PLS-DA scores and biomarkers
-
-```{r plsda-scores, exercise=TRUE, exercise.setup="prep-plsda"}
-ggplot(plsda_scores_df, aes(x = LV1, y = LV2, colour = Class, shape = Class)) +
-  geom_point(size = 3, alpha = 0.85) +
-  stat_ellipse(level = 0.95, linetype = "dashed", linewidth = 0.4) +
-  scale_colour_manual(values = class_colors) +
-  labs(title = "PLS-DA scores",
-       subtitle = "compare with the PCA scores plot: the classes now split along LV1",
-       x = "Latent variable 1", y = "Latent variable 2") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-```
-
-```{r plsda-internode, exercise=TRUE, exercise.setup="prep-plsda"}
-# Is the growth trend still visible inside the classes?
-ggplot(plsda_scores_df, aes(x = LV1, y = LV2, colour = Internode, shape = Class)) +
-  geom_point(size = 3) +
-  scale_colour_gradient(low = "#B2DF8A", high = "#1B5E20", breaks = c(1, 4, 8)) +
-  labs(title = "PLS-DA scores coloured by internode") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-```
-
-### VIP: which buckets carry the discrimination?
-
-**VIP** (Variable Importance in Projection) summarises how much each variable
-contributes to the discriminant model. A VIP above 1 is the usual threshold for
-"more important than average".
-
-```{r plsda-vip, exercise=TRUE, exercise.setup="prep-plsda"}
-vip_df <- data.frame(
-  Bucket = rownames(vip_scores),
-  ppm = as.numeric(rownames(vip_scores)),
-  VIP = vip_scores[, 5]
-)
-
-cat("Buckets with VIP > 1:", sum(vip_df$VIP > 1), "out of", nrow(vip_df), "\n\n")
-cat("Top 10:\n")
-print(head(vip_df[order(-vip_df$VIP), c("Bucket", "VIP")], 10), row.names = FALSE)
-
-ggplot(vip_df, aes(x = ppm, y = VIP)) +
-  geom_segment(aes(xend = ppm, yend = 0), linewidth = 0.3) +
-  geom_hline(yintercept = 1, linetype = "dashed", colour = "red") +
-  scale_x_reverse(limits = c(10, 0), breaks = seq(0, 10, by = 1)) +
-  labs(title = "VIP score against chemical shift",
-       subtitle = "red line = VIP of 1",
-       x = "Chemical shift (ppm)") +
-  theme_minimal()
-```
-
-```{r biomarker-boxplot, exercise=TRUE, exercise.setup="prep-plsda"}
-# Look at the raw data for the strongest candidate
-top_bucket <- rownames(vip_scores)[which.max(vip_scores[, 5])]
-
-biomarker_df <- data.frame(meta, Intensity = X[, top_bucket])
-
-p1 <- ggplot(biomarker_df, aes(x = Class, y = Intensity, fill = Class)) +
-  geom_boxplot(alpha = 0.7, outlier.shape = NA) +
-  geom_jitter(width = 0.15, alpha = 0.7) +
-  scale_fill_manual(values = class_colors) +
-  labs(title = paste("Bucket", top_bucket, "by class"), y = "Intensity") +
-  theme_minimal() + theme(legend.position = "none")
-
-p2 <- ggplot(biomarker_df, aes(x = Internode, y = Intensity, colour = Class)) +
-  geom_point(size = 2) +
-  geom_smooth(method = "lm", se = FALSE, linewidth = 0.6, formula = y ~ x) +
-  scale_colour_manual(values = class_colors) +
-  scale_x_continuous(breaks = 1:8) +
-  labs(title = paste("Bucket", top_bucket, "along the stem")) +
-  theme_minimal() + theme(legend.position = "bottom")
-
-print(p1)
-print(p2)
-```
-
-```{r quiz-vip, echo=FALSE}
-quiz(
-  question("The strongest biomarker candidate is the bucket at 3.82122 ppm. What do the two plots above tell you?",
-    answer("It separates the classes on average, but it also changes along the stem - so it is partly a growth effect", correct = TRUE),
-    answer("It separates the classes perfectly, with no overlap"),
-    answer("It shows no difference between the classes"),
-    answer("It only changes with internode and not with class"),
-    message = "The boxplot shows a clear average difference, but with overlap: some MYB76 samples look like wild type ones. The second plot explains why - the intensity also depends on where along the stem the sample came from. The top-VIP variables also carry the internode trend. In a follow-up experiment you would want to account for developmental stage rather than treat these as clean genotype markers."
-  ),
-  question("Ninety-one buckets have VIP > 1. Are those 91 biomarkers?",
-    answer("No - they are candidates, and neighbouring buckets often belong to the same metabolite", correct = TRUE),
-    answer("Yes, all 91 are confirmed biomarkers"),
-    answer("No, VIP has nothing to do with importance"),
-    answer("Yes, but only the first 10 count"),
-    message = "Two reasons to be careful. First, one metabolite produces several peaks and each peak spans several 0.02 ppm buckets, so 91 buckets correspond to far fewer than 91 compounds - look at the VIP plot and you will see them arriving in clumps. Second, a VIP is a statistical ranking within THIS model; identifying the actual compound needs 2D-NMR or MS, and confirming it needs an independent set of samples."
   )
 )
 ```
@@ -1017,8 +959,8 @@ cat("p-value:          ", (sum(perm_df$Q2 >= observed["Q2"]) + 1) / (n_perm + 1)
 ```{r quiz-permutation, echo=FALSE}
 quiz(
   question("The observed Q² is 0.83 while the permuted models average about -0.27 and never exceed 0.16. What does this show?",
-    answer("The class separation is real and not an artefact of having more variables than samples", correct = TRUE),
     answer("The model is overfitted"),
+    answer("The class separation is real and not an artefact of having more variables than samples", correct = TRUE),
     answer("The permutation test failed"),
     answer("Nothing - permutation tests are not informative for PLS-DA"),
     message = "The real model sits far outside the distribution of models built on shuffled labels (p = 0.01, the smallest value obtainable with 100 permutations). Note that the permuted models have NEGATIVE Q² on average: when the labels are meaningless, the model predicts left-out samples worse than simply guessing the overall mean. That is exactly what you want to see."
@@ -1031,11 +973,151 @@ quiz(
     message = "R² only measures how well the model describes the samples it was built on, and with 655 variables and 45 samples there is always some structure to fit, even in nonsense labels. That is why the green points stay well above zero. Q² is the honest measure: it drops below zero as soon as the labels are meaningless. Both intercepts are well within the rules of thumb (R² below 0.3 to 0.4, Q² below 0.05), and the steep upward slope of the Q² line shows that the predictive power comes from the real class labels."
   ),
   question("Suppose the permuted models had reached Q² values around 0.7. What would you conclude?",
-    answer("That the apparent class separation could easily be a chance artefact and cannot be trusted", correct = TRUE),
     answer("That the model is even better than we thought"),
     answer("That we should add more components"),
     answer("That we should remove the outliers and try again"),
+    answer("That the apparent class separation could easily be a chance artefact and cannot be trusted", correct = TRUE),
     message = "If random labels produce almost as good a model as the real ones, then the separation you see says more about the shape of the data - many variables, few samples - than about biology. This is the single most common way metabolomics studies go wrong, and it is why no PLS-DA result should ever be reported without a validation like this."
+  )
+)
+```
+
+## PLS-DA scores and biomarkers
+
+```{r plsda-scores, exercise=TRUE, exercise.setup="prep-plsda", fig.width=7, fig.height=6}
+p <- ggplot(plsda_scores_df, aes(x = LV1, y = LV2, colour = Class,
+                                 # text shown when you hover over a point
+                                 text = paste0("Sample: ", Sample,
+                                               "<br>Class: ", Class,
+                                               "<br>Tree: ", Tree,
+                                               "<br>Internode: ", Internode))) +
+  geom_point(size = 3, alpha = 0.85) +
+  # the ellipse is drawn per class, so it does not need the hover text
+  stat_ellipse(aes(text = NULL), level = 0.95, linetype = "dashed",
+               linewidth = 0.4) +
+  scale_colour_manual(values = class_colors) +
+  labs(x = "Latent variable 1", y = "Latent variable 2") +
+  theme_minimal()
+
+# Interactive: hover over a point to see which sample it is
+ggplotly(p, tooltip = "text") |>
+  layout(
+    title = list(
+      text = paste0("PLS-DA scores",
+                    "<br><sup>compare with the PCA scores plot: the classes now split along LV1</sup>"),
+      x = 0, xanchor = "left"
+    ),
+    margin = list(t = 70),
+    legend = list(orientation = "h", x = 0, y = -0.15)
+  )
+```
+
+```{r plsda-internode, exercise=TRUE, exercise.setup="prep-plsda", fig.width=7, fig.height=6}
+# Is the growth trend still visible inside the classes?
+p <- ggplot(plsda_scores_df, aes(x = LV1, y = LV2, colour = Internode, shape = Class,
+                                 # text shown when you hover over a point
+                                 text = paste0("Sample: ", Sample,
+                                               "<br>Class: ", Class,
+                                               "<br>Tree: ", Tree,
+                                               "<br>Internode: ", Internode))) +
+  geom_point(size = 3) +
+  scale_colour_gradient(low = "#B2DF8A", high = "#1B5E20", breaks = c(1, 4, 8)) +
+  labs(title = "PLS-DA scores coloured by internode",
+       x = "Latent variable 1", y = "Latent variable 2") +
+  theme_minimal()
+
+# Interactive: hover over a point to see which sample it is
+ggplotly(p, tooltip = "text")
+```
+
+### VIP: which buckets carry the discrimination?
+
+**VIP** (Variable Importance in Projection) summarises how much each variable
+contributes to the discriminant model. A VIP above 1.5 is the usual threshold for
+"more important than average".
+
+```{r plsda-vip, exercise=TRUE, exercise.setup="prep-plsda"}
+vip_df <- data.frame(
+  Bucket = rownames(vip_scores),
+  ppm = as.numeric(rownames(vip_scores)),
+  VIP = vip_scores[, 5]
+)
+
+p <- vip_df |>
+  # only 0 - 10 ppm, outside that range there is only noise
+  filter(ppm >= 0, ppm <= 10) |>
+  ggplot(aes(x = ppm, y = VIP,
+             # text shown when you hover over a bar
+             text = paste0("Bucket: ", Bucket, " ppm",
+                           "<br>VIP: ", round(VIP, 2)))) +
+  geom_segment(aes(xend = ppm, yend = 0), linewidth = 0.3) +
+  geom_hline(yintercept = 1.5, linetype = "dashed", colour = "red") +
+  scale_x_reverse(breaks = seq(0, 10, by = 1)) +   # NMR convention: high ppm left
+  labs(x = "Chemical shift (ppm)") +
+  theme_minimal()
+
+# Interactive: drag a rectangle to zoom in, double-click to zoom out again
+ggplotly(p, tooltip = "text") |>
+  layout(title = list(
+    text = paste0("VIP score against chemical shift",
+                  "<br><sup>red line = VIP of 1.5</sup>"),
+    x = 0, xanchor = "left"
+  ))
+
+cat("Buckets with VIP > 1.5:", sum(vip_df$VIP > 1.5), "out of", nrow(vip_df), "\n\n")
+cat("Top 10:\n")
+print(head(vip_df[order(-vip_df$VIP), c("Bucket", "VIP")], 10), row.names = FALSE)
+```
+
+Now look at the raw data of a candidate. Fill in any bucket in `bucket` - for
+example one from the top 10 above, or one you found by hovering over the VIP
+plot - and press **Run Code**. The default is the bucket with the highest VIP.
+
+```{r biomarker-boxplot, exercise=TRUE, exercise.setup="prep-plsda"}
+# The bucket to look at, written exactly as in the VIP plot
+bucket <- "8.08875"
+
+if (!bucket %in% colnames(X)) {
+  stop("Unknown bucket: ", bucket,
+       ". Use the names shown in the VIP plot, e.g. \"8.08875\".")
+}
+
+biomarker_df <- data.frame(meta, Intensity = X[, bucket])
+
+p1 <- ggplot(biomarker_df, aes(x = Class, y = Intensity, fill = Class)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+  geom_jitter(width = 0.15, alpha = 0.7) +
+  scale_fill_manual(values = class_colors) +
+  labs(title = paste("Bucket", bucket, "by class"), y = "Intensity") +
+  theme_minimal() + theme(legend.position = "none")
+
+p2 <- ggplot(biomarker_df, aes(x = Internode, y = Intensity, colour = Class)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 0.6, formula = y ~ x) +
+  scale_colour_manual(values = class_colors) +
+  scale_x_continuous(breaks = 1:8) +
+  labs(title = paste("Bucket", bucket, "along the stem")) +
+  theme_minimal() + theme(legend.position = "bottom")
+
+print(p1)
+print(p2)
+```
+
+```{r quiz-vip, echo=FALSE}
+quiz(
+  question("Plot the strongest biomarker candidate. What do the two plots above tell you?",
+    answer("It separates the classes on average, but it also changes along the stem - so it is partly a growth effect", correct = TRUE),
+    answer("It separates the classes perfectly, with no overlap"),
+    answer("It shows no difference between the classes"),
+    answer("It only changes with internode and not with class"),
+    message = "The boxplot shows a clear average difference, but with overlap: some MYB76 samples look like wild type ones. The second plot explains why - the intensity also depends on where along the stem the sample came from. The top-VIP variables also carry the internode trend. In a follow-up experiment you would want to account for developmental stage rather than treat these as clean genotype markers."
+  ),
+  question("Ninety-one buckets have VIP > 1.5. Are those 61 biomarkers?",
+    answer("Yes, all 61 are confirmed biomarkers"),
+    answer("No, VIP has nothing to do with importance"),
+    answer("No - they are candidates, and neighbouring buckets often belong to the same metabolite", correct = TRUE),
+    answer("Yes, but only the first 10 count"),
+    message = "Two reasons to be careful. First, one metabolite produces several peaks and each peak spans several 0.02 ppm buckets, so 61 buckets correspond to far fewer than 61 compounds - look at the VIP plot and you will see them arriving in clumps. Second, a VIP is a statistical ranking within THIS model; identifying the actual compound needs 2D-NMR or MS, and confirming it needs an independent set of samples."
   )
 )
 ```
