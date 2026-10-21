@@ -293,10 +293,10 @@ cat("  UV:       1 : 1\n")
 
 ```{r quiz-scaling, echo=FALSE}
 question("Why is Pareto usually preferred over UV scaling for NMR data?",
-  answer("It keeps some of the information that a peak is large, while still letting smaller peaks contribute", correct = TRUE),
   answer("It makes all variables exactly equally important"),
   answer("It removes the noise buckets automatically"),
   answer("It is faster to compute"),
+  answer("It keeps some of the information that a peak is large, while still letting smaller peaks contribute", correct = TRUE),
   message = "UV scaling makes every bucket equally important - including the several hundred buckets that contain nothing but noise, which would then contribute as much as real metabolite peaks. No scaling goes to the other extreme and lets a handful of big peaks dominate. Pareto sits in between: peak size still counts for something, but not for everything."
 )
 ```
@@ -354,8 +354,8 @@ data.frame(
 ```{r quiz-pca-quality, echo=FALSE}
 quiz(
   question("Seven components give R²cum = 0.86 and Q²cum = 0.70. How would you describe this model?",
-    answer("It describes most of the data and also predicts it well: a solid overview model", correct = TRUE),
     answer("It is overfitted, because 7 components is too many"),
+    answer("It describes most of the data and also predicts it well: a solid overview model", correct = TRUE),
     answer("It is useless, because R² is below 1"),
     answer("It cannot be judged without the class labels"),
     message = "R²cum = 0.86 means 86% of the (Pareto-scaled) data is described, and Q²cum = 0.70 means the model still predicts left-out samples well. In metabolomics a Q² around 0.5 is already considered good. Note also that Q² is still rising at component 7, so the model has not yet started fitting noise."
@@ -480,49 +480,28 @@ ggplot(scores_df, aes(x = PC1, y = PC2, colour = Tree, shape = Class)) +
   theme(legend.position = "bottom")
 ```
 
-Rather than judging by eye, put numbers on it:
-
-```{r scores-stats, exercise=TRUE, exercise.setup="prep-pca"}
-# Does the class separate along each component?
-for (k in 1:3) {
-  tt <- t.test(scores_df[[paste0("PC", k)]] ~ scores_df$Class)
-  cat(sprintf("PC%d  class difference: t = %6.2f, p = %-10.3g | correlation with internode: r = %+.2f\n",
-              k, tt$statistic, tt$p.value,
-              cor(scores_df[[paste0("PC", k)]], scores_df$Internode)))
-}
-
-# How strong is the internode trend within each class?
-cat("\nMean PC1 by position along the stem:\n")
-scores_df |>
-  mutate(Position = cut(Internode, c(0, 3, 5, 8),
-                        labels = c("top (1-3)", "middle (4-5)", "bottom (6-8)"))) |>
-  group_by(Class, Position) |>
-  summarise(mean_PC1 = round(mean(PC1), 2), .groups = "drop") |>
-  pivot_wider(names_from = Position, values_from = mean_PC1)
-```
-
 ```{r quiz-scores, echo=FALSE}
 quiz(
   question("Which experimental factor drives PC1, the largest component?",
-    answer("The internode, i.e. the position along the stem", correct = TRUE),
     answer("The genotype (Class)"),
     answer("The individual tree"),
+    answer("The internode, i.e. the position along the stem", correct = TRUE),
     answer("Nothing - PC1 is noise"),
-    message = "PC1 correlates with internode at r = +0.81, while the class difference along PC1 is not significant (p = 0.17). The largest source of variation in this experiment is the developmental stage of the tissue, not the genetic modification: samples from the top of the plant sit on one side and samples from the bottom on the other."
+    message = "PC1 correlates with internode. The largest source of variation in this experiment is the developmental stage of the tissue, not the genetic modification: samples from the top of the plant sit on one side and samples from the bottom on the other."
   ),
   question("Where does the difference between MYB76 and wild type show up?",
     answer("On PC2, the second component", correct = TRUE),
     answer("On PC1, the first component"),
     answer("It does not show up at all"),
     answer("Only on PC3"),
-    message = "The class separation is highly significant on PC2 (t = 5.7, p = 0.0000014) but not on PC1 (p = 0.17). The fact that the class separation appears on the SECOND component tells you the genotype is not the biggest source of variation here - growth stage is. (PC3 also separates the classes, but it carries far less variance.)"
+    message = "In the third scores plot you can clearly see that the difference between MYB76 and wild type is in the PC2 direction. The fact that the class separation appears on the SECOND component tells you the genotype is not the biggest source of variation here - growth stage is. (PC3 also separates the classes, but it carries far less variance.)"
   ),
   question("Is the internode trend equally strong in both genotypes?",
-    answer("No - it is much more pronounced in MYB76 than in the wild type", correct = TRUE),
     answer("Yes, both show exactly the same trend"),
     answer("No - it only occurs in the wild type"),
     answer("There is no internode trend in either"),
-    message = "Look at the table: in MYB76 the mean PC1 moves from -0.40 at the top of the plant to +0.51 at the bottom, a span of about 0.9. In the wild type it moves only from -0.18 to +0.04, a span of about 0.2. The modified trees change much more along the stem, which is itself a biological result: PttMYB76 appears to affect how metabolism changes as the tissue develops."
+    answer("No - it is much more pronounced in MYB76 than in the wild type", correct = TRUE),
+    message = "This is best observed when you modify one of the scores plot to color by internode and set the shape to class. The samples of the modified trees are spread out over the whole scores plot in the PC1 direction, while the samples of the wild type are much less spread out in the PC1 direction. The modified trees change much more along the stem, which is itself a biological result: PttMYB76 appears to affect how metabolism changes as the tissue develops."
   )
 )
 ```
