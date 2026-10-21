@@ -1,6 +1,7 @@
 ---
 title: "Multivariate Data Analysis: Food data set"
 subtitle: "Principal Component Analysis with R"
+description: "PCA of food consumption in 16 European countries: interpret scores and loadings, detect outliers, explore PC1 vs PC3 and compare with hierarchical clustering."
 author: "Rico Derks, Aswin Verhoeven"
 output:
   learnr::tutorial:
@@ -87,10 +88,10 @@ scores_df <- data.frame(
 This works exactly like the IRIS tutorial, so if you have just finished that one
 you can go straight to the next section.
 
-Everything runs in your browser; you cannot break anything. The grey boxes are
-live R code: press **Run Code** to execute a box, **Start Over** to restore the
-original code, and **Solution** (where it is offered) to see one possible answer.
-You are encouraged to change the code and run it again.
+The grey boxes are live R code: press **Run Code** to execute a box, 
+**Start Over** to restore the original code, and **Solution** (where it is 
+offered) to see one possible answer. You are encouraged to change the code and 
+run it again.
 
 Answer the questions with **Submit Answer** and read the explanation that
 follows - it is usually the most useful part, also when you were right. Sections
@@ -139,6 +140,9 @@ the NIPALS algorithm we use below handles them directly, so there is nothing you
 need to do about them.
 
 ### Data Exploration
+
+It's always good to have a closer look at the data structure. Which columns are 
+numbers and which columns are characters or categories.
 
 ```{r data-structure, exercise=TRUE}
 # Check the structure
@@ -328,11 +332,11 @@ quiz(
     message = "Colouring by geographic location reveals roughly three groups: the Northern countries (Sweden, Denmark, Norway, Finland), the Southern countries (Portugal, Italy, Spain, and Austria alongside them), and the rest. The groups overlap, so this is a tendency rather than a clean separation."
   ),
   question("Which two countries lie furthest apart in the PC1 vs PC2 scores plot?",
-    answer("Portugal and Sweden", correct = TRUE),
+    answer("Portugal and England", correct = TRUE),
+    answer("Portugal and Sweden"),
     answer("Germany and France"),
-    answer("England and Ireland"),
     answer("Norway and Denmark"),
-    message = "Portugal sits at the far negative end of PC1 (-4.6) and Sweden at the far positive end of both PC1 (3.2) and PC2 (4.1): they are the two poles of the Mediterranean-versus-Nordic contrast. Note that England and Ireland are NOT extreme here (Ireland sits almost exactly at PC1 = 0). They only stand out once we look at PC3, later in this tutorial."
+    message = "Portugal sits at the far negative end of PC1 (-4.6) and England at the far positive end (+3.9), which makes them the two countries furthest apart. Portugal and Sweden are a close second: Sweden is less extreme on PC1 (+3.2) but has the highest PC2 score of all (+4.1), which makes it the most 'Nordic' country in the plot."
   )
 )
 ```
@@ -384,10 +388,10 @@ cat("Countries outside the ellipse:",
 head(scores_df[order(-scores_df$T2), c("Country", "T2")], 3)
 ```
 
-Nothing falls outside the ellipse. That is worth pausing on: Sweden (T² = 6.1)
-and Portugal (T² = 3.6) are clearly the most extreme countries - the same two
-countries you identified in the scores plot earlier - yet with only 16 
-observations the 95% ellipse is so wide that neither crosses it. A small data 
+Nothing falls outside the ellipse. That is worth pausing on: Sweden
+(T² = 6.1) is the most extreme country, followed by Portugal (3.6) and
+England (3.3), yet with only 16 observations the 95% ellipse is so wide that
+none of them crosses it. A small data 
 set has very little power to flag outliers, so the absence of a flag is not 
 evidence that everything is fine.
 
@@ -404,9 +408,10 @@ p <- ggplot(dmodx_df, aes(x = reorder(Country, DModX), y = DModX)) +
   geom_hline(yintercept = 1, linetype = "dashed") +
   geom_hline(yintercept = 2, linetype = "dotted", colour = "red") +
   labs(x = NULL, y = "DModX (normalised)") +
-  theme_minimal()
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggplotly(p, tooltips = c("text", "colour", "x", "y")) |> 
+ggplotly(p, tooltips = c("text", "colour", "x", "y")) |>
   layout(
     title = list(
       text = paste0(
@@ -433,14 +438,14 @@ quiz(
     answer("Yes, Sweden and Portugal, because they are the most extreme"),
     answer("Yes, all Northern European countries"),
     answer("Yes, the countries with missing values"),
-    message = "No country falls outside the 95% T² ellipse, and the highest DModX (France, 1.4) does not come close to twice the model average. Sweden and Portugal are extreme, but being extreme is not the same as being an outlier: they are extreme precisely because their diets differ most, which is the pattern we are trying to study. Removing them would delete the very signal you are after. Outlier diagnostics exist to make you go and LOOK at a sample, not to delete it automatically."
+    message = "No country falls outside the 95% T² ellipse, and the highest DModX (France, 1.4) does not come close to twice the model average. Sweden has the highest T2 value, but this is  precisely because their diets differ most, which is the pattern we are trying to study. Removing observations with a large / extreme T2 value would delete the very signal you are after. Outlier diagnostics exist to make you go and LOOK at a sample, not to delete it automatically."
   ),
   question("Why is DModX worth looking at when you already have the scores plot?",
-    answer("A country can sit comfortably inside the ellipse and still be poorly described by the model", correct = TRUE),
     answer("DModX is just another way of drawing the scores plot"),
     answer("DModX replaces the need for R² and Q²"),
     answer("DModX measures how important each food item is"),
-    message = "The scores plot only shows you the part of an observation that the model DOES capture. DModX measures the residual - the part it misses. An observation can look perfectly ordinary in the scores plot and still have a large DModX, which is why SIMCA shows you both."
+    answer("A country can sit comfortably inside the ellipse and still be poorly described by the model", correct = TRUE),
+    message = "The scores plot only shows you the part of an observation that the model DOES capture. DModX measures the residual - the part it misses. An observation can look perfectly ordinary in the scores plot and still have a large DModX."
   )
 )
 ```
@@ -450,8 +455,8 @@ quiz(
 <div class="alert alert-info">
 **A word of warning about signs.** The direction of a principal component is
 arbitrary: a component and its mirror image describe exactly the same model. Your
-plot may therefore be flipped compared with the SIMCA handout or with a fellow
-student's screen, and the sign of a loading on its own means nothing.
+plot may therefore be flipped compared with a fellow student's screen, and the 
+sign of a loading on its own means nothing.
 
 What *is* meaningful is the relative arrangement: which foods sit together,
 which sit on opposite sides of the origin, and how far each lies from the
@@ -560,12 +565,19 @@ print(sort(food_loadings[,1], decreasing = FALSE)[1:5])
 
 ```{r quiz-loadings, echo=FALSE}
 quiz(
-  question("What food items are causing the main clustering patterns in the scores plot?",
-    answer("Garlic and olive oil at one end, crisp bread and frozen fish at the other", correct = TRUE),
-    answer("Coffee and tea only"),
-    answer("Butter and margarine only"),
-    answer("All foods contribute equally"),
-    message = "A loadings plot always has two ends, and both are informative. Garlic (-0.25) and olive oil (-0.15) have the strongest negative loadings on PC1 and pull the Mediterranean countries to that side. On PC2 the strongest positive loadings are crisp bread (0.39), frozen fish (0.37) and frozen vegetables (0.27), which is what sets the Northern countries apart. The further a variable lies from the origin, the more it contributes."
+  question("Portugal and England are the two countries furthest apart in the scores plot. Which foods are the main cause of this separation?",
+    answer("Tinned fruit and tinned soup: England buys them a lot, Portugal hardly at all", correct = TRUE),
+    answer("Garlic and olive oil"),
+    answer("Crisp bread and frozen fish"),
+    answer("Butter and margarine"),
+    message = "Portugal and England sit at opposite ends of PC1. Garlic and olive oil are the obvious guess, because they mark the Mediterranean side of PC1 - but England's olive oil consumption (57%) is actually about average, and garlic explains only a small part of the gap. The bigger difference lies at the other end of PC1. Tinned fruit (England 89%, Portugal 8%) and tinned soup (76% against 1%) contribute most, followed by jam, biscuits, apples and instant coffee - all much more common in England. So the separation is mainly 'England buys a lot of tinned and processed food', not 'Portugal uses a lot of garlic'. Always check the raw data before settling on the most obvious explanation."
+  ),
+  question("The Northern countries (Sweden, Denmark, Norway and Finland) sit at the top of the scores plot. What makes them different from the rest of Europe?",
+    answer("A high consumption of crisp bread, frozen fish and frozen vegetables", correct = TRUE),
+    answer("A high consumption of garlic and olive oil"),
+    answer("A high consumption of tinned soup and instant coffee"),
+    answer("Nothing - they sit in the middle of the scores plot"),
+    message = "The Northern countries lie on the positive side of PC2, and the foods with the largest positive PC2 loadings are crisp bread (0.39), frozen fish (0.37) and frozen vegetables (0.27). The raw data agree: crisp bread is found in 63% of Nordic households against 16% elsewhere, frozen fish in 38% against 16%, and frozen vegetables in 28% against 12%. The other end of PC2 tells the same story from the opposite side: instant coffee has the most negative PC2 loading (-0.41), and the Nordic countries use much less of it (15% against 47%)."
   )
 )
 ```
@@ -641,8 +653,6 @@ country lies in the direction of the foods its households buy most, and the
 longer an arrow, the more that food drives the picture. Foods whose arrows
 point the same way tend to be found together.
 
-This is the quickest way to answer the question that follows.
-
 ```{r biplot2, exercise=TRUE, exercise.setup="prep-pca", fig.width=7, fig.height=6}
 # Scores and loadings in one picture. The loadings are much smaller numbers than
 # the scores, so they are multiplied by a constant to make both fill the same
@@ -681,6 +691,41 @@ ggplot(biplot_scores, aes(x = PC1, y = PC3)) +
   theme(legend.position = "bottom")
 ```
 
+#### One food at a time
+
+A biplot shows the overall picture, but it is always worth checking the raw
+data behind it. The plot below shows, for one food, the percentage of
+households in each country where it was found. Change `food` to any of the
+other food names (listed at the top of the output) and press **Run Code**
+again. Which foods really set England and Ireland apart?
+
+```{r food-per-country, exercise=TRUE, fig.width=7, fig.height=5}
+# The available foods
+food_vars
+
+# Pick a food (copy one of the names below)
+food <- "Ground_Coffee"
+
+plot_df <- data.frame(
+  Country = food_data$Country,
+  Region  = food_data$Geographic_Location,
+  Value   = food_data[[food]]
+)
+
+ggplot(plot_df, aes(x = reorder(Country, Value), y = Value, fill = Region)) +
+  geom_col(na.rm = TRUE) +
+  # dashed line = the European average for this food
+  geom_hline(yintercept = mean(plot_df$Value, na.rm = TRUE),
+             linetype = "dashed") +
+  scale_fill_manual(values = region_colors, labels = region_labels) +
+  labs(title = paste("Households with", food, "per country"),
+       subtitle = "dashed line = European average",
+       x = NULL, y = "% of households") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+```
+
 ### Quiz: PC1 vs PC3 Interpretation
 
 ```{r quiz-pc3, echo=FALSE}
@@ -702,72 +747,15 @@ quiz(
 )
 ```
 
-## Enhanced Visualizations
+## Hierarchical clustering: a second unsupervised view
 
-### Contribution of Variables
+PCA is not the only unsupervised way to look for groups. **Hierarchical
+clustering** joins the countries that are most alike, step by step, into a
+tree (a dendrogram). Like PCA, it never sees the regions.
 
-A variable's *contribution* to a component is its squared loading expressed as a
-percentage of that component's total. The dashed line marks the level a variable
-would reach if all 20 foods contributed equally.
-
-```{r variable-contribution, exercise=TRUE, exercise.setup="prep-pca", fig.width=7, fig.height=6}
-contribution <- function(comp) {
-  contrib <- food_loadings[, comp]^2 / sum(food_loadings[, comp]^2) * 100
-  data.frame(Food = names(contrib), Contribution = contrib) |>
-    arrange(desc(Contribution)) |>
-    head(10)
-}
-
-p <- ggplot(contribution(1), aes(x = reorder(Food, Contribution), y = Contribution)) +
-  geom_col(fill = "steelblue") +
-  geom_hline(yintercept = 100 / nrow(food_loadings),
-             linetype = "dashed", colour = "red") +
-  labs(title = "Top 10 foods contributing to PC1",
-       x = NULL, y = "Contribution (%)") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45,
-                                   hjust = 1))
-
-ggplotly(p)
-```
-
-```{r variable-contribution-pc2, exercise=TRUE, exercise.setup="prep-pca", fig.width=7, fig.height=6}
-contrib_pc2 <- food_loadings[, 2]^2 / sum(food_loadings[, 2]^2) * 100
-contrib_pc2 <- sort(contrib_pc2, decreasing = TRUE)[1:10]
-
-p <- ggplot(data.frame(Food = names(contrib_pc2), Contribution = contrib_pc2),
-       aes(x = reorder(Food, Contribution), y = Contribution)) +
-  geom_col(fill = "darkorange") +
-  geom_hline(yintercept = 100 / nrow(food_loadings),
-             linetype = "dashed", colour = "red") +
-  labs(title = "Top 10 foods contributing to PC2",
-       x = NULL, y = "Contribution (%)") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45,
-                                   hjust = 1))
-
-ggplotly(p)
-```
-
-## Alternative Univariate Approaches
-
-If multivariate methods don't provide sufficient clarity, what alternative approaches could you use?
-
-```{r quiz-univariate, echo=FALSE}
-question("Which univariate approaches could you use here instead of PCA? (select all that apply)",
-  answer("A one-way ANOVA per food item, comparing the geographic regions", correct = TRUE),
-  answer("A t-test per food item when comparing just two groups of countries", correct = TRUE),
-  answer("Correcting for multiple testing, because you run one test per food item", correct = TRUE),
-  answer("Reporting whichever food has the largest PC1 loading, without any test"),
-  type = "multiple",
-  message = "Go variable by variable: a one-way ANOVA across the five regions, or a t-test if you reduce it to two groups (say Southern versus Northern). Because you would be running 20 tests - one per food - you must correct for multiple testing (Bonferroni, or Benjamini-Hochberg if you prefer to control the false discovery rate). What you lose compared with PCA is the correlation structure: univariate tests treat garlic and olive oil as two unrelated findings, whereas the loadings plot shows at a glance that they travel together."
-)
-```
-
-The heatmap below is a visual version of that variable-by-variable comparison.
-Each column is scaled to a **z-score**, so the colour says how far a country
-lies above (red) or below (blue) the European average *for that food* - the same
-unit variance scaling the PCA used. Both countries and foods are reordered by
+In the heatmap below, each column is scaled to a **z-score**, so the colour says
+how far a country lies above (red) or below (blue) the European average *for
+that food* - the same unit variance scaling the PCA used. Both countries and foods are reordered by
 hierarchical clustering, and the coloured bar on the right shows the geographic
 region, which is **not** used by the clustering.
 
@@ -807,6 +795,23 @@ fall into the same groups, even though the heatmap never saw a principal
 component. Look at the block of dark red where Portugal, Italy and Spain meet
 garlic and olive oil, and at the Nordic block on crisp bread and frozen foods.
 The grey cells are the three missing values.
+
+## Alternative Univariate Approaches
+
+If multivariate methods don't provide sufficient clarity, what alternative approaches could you use?
+
+### Quiz: Univariate alternatives
+
+```{r quiz-univariate, echo=FALSE}
+question("Which univariate approaches could you use here instead of PCA? (select all that apply)",
+  answer("A one-way ANOVA per food item, comparing the geographic regions", correct = TRUE),
+  answer("A t-test per food item when comparing just two groups of countries", correct = TRUE),
+  answer("Correcting for multiple testing, because you run one test per food item", correct = TRUE),
+  answer("Reporting whichever food has the largest PC1 loading, without any test"),
+  type = "multiple",
+  message = "Go variable by variable: a one-way ANOVA across the five regions, or a t-test if you reduce it to two groups (say Southern versus Northern). Because you would be running 20 tests - one per food - you must correct for multiple testing (Bonferroni, or Benjamini-Hochberg if you prefer to control the false discovery rate). What you lose compared with PCA is the correlation structure: univariate tests treat garlic and olive oil as two unrelated findings, whereas the loadings plot shows at a glance that they travel together."
+)
+```
 
 ### One-way ANOVA, food by food
 
@@ -924,6 +929,8 @@ food_data |>
         legend.position = "none")
 ```
 
+### Quiz: Alternative Univariate Approaches
+
 ```{r quiz-univariate-results, echo=FALSE}
 quiz(
   question("The t-test finds garlic and olive oil, which is what the loadings plot already told you. So what did PCA add?",
@@ -947,20 +954,29 @@ quiz(
 
 ### What We've Learned
 
-1. **Cultural Patterns**: Food consumption reflects clear geographic and cultural patterns across Europe
-2. **Mediterranean vs Northern**: Garlic and olive oil distinguish Southern European countries
-3. **UK Uniqueness**: England and Ireland stand apart mainly because of their very low ground coffee consumption, not because of tea
-4. **PCA Interpretation**: Multiple PCs reveal different aspects of variation:
-   - PC1 (31.6%): Mediterranean vs the rest (garlic, olive oil at the negative end)
-   - PC2 (19.2%): the Nordic pattern (crisp bread, frozen fish, frozen vegetables)
-   - PC3 (13.8%): England and Ireland (low ground coffee, high jam)
-5. **Data Quality**: Food consumption data has more variability than biological measurements. R²cum reaches 0.65 at three components, but Q²cum peaks around 0.2 and then falls: the model describes a real but weak pattern, good enough to explore with, not good enough to predict with.
-6. **Diagnostics**: no country is a genuine outlier here, but note *why* - with only 16 observations the Hotelling's T² ellipse is very wide, so a small data set has little power to detect outliers in the first place.
-
-### Key Differences Identified
-
-**Portugal and Spain vs Sweden and Denmark** (average % of households, the four countries only):
-
-- **Higher**: Garlic (88 vs 10), Olive oil (92 vs 39), Instant coffee (33 vs 15)
-- **Lower**: Crisp bread (11 vs 64), Jam (27 vs 70), Frozen vegetables (5 vs 44), Tinned fruit (19 vs 52)
-- **Cultural interpretation**: Mediterranean diet vs Nordic diet - fresh, oil- and garlic-based cooking against preserved, frozen and tinned products
+1. **Missing values need not stop you.** The NIPALS algorithm fits the model
+   around the few empty cells, so nothing had to be removed or imputed first.
+2. **Choose the number of components with Q², not R².** R² keeps rising with
+   every component; Q² peaked around the third component and then fell. A low
+   Q² (about 0.2 here) means the model is good for exploring, not for
+   predicting - the broad patterns can still be real.
+3. **Look beyond PC1 and PC2.** PC3 showed a pattern that the first two
+   components hid (England and Ireland, with their low ground coffee).
+4. **Read scores and loadings together, one component at a time.** Each
+   component has two ends, and foods at one end are bought most in the
+   countries at the same end of the scores plot.
+5. **Check the raw data before you explain.** The obvious explanation is not
+   always the right one: Portugal and England are separated mainly by tinned
+   and processed foods, not by garlic and olive oil. In a biplot, a short arrow
+   means a variable is poorly described in that plane, so do not read values
+   from it.
+6. **Extreme is not the same as an outlier.** Hotelling's T² and DModX tell you
+   which samples to look at, not which ones to delete. With only 16
+   observations the T² ellipse is very wide, so a small data set has little
+   power to flag outliers at all.
+7. **PCA and univariate tests answer different questions.** PCA shows which
+   variables move together and maps all observations in one picture, but gives
+   no p-values. Testing every variable separately does give p-values, but needs
+   a correction for multiple testing and loses the correlation structure. A
+   second unsupervised method, hierarchical clustering, found the same groups
+   as the PCA.
