@@ -134,6 +134,13 @@ pathway**, which leads to the formation of S- and G-lignin, flavonoids and
 sinapate esters. Milled poplar samples collected at the internodes of the tree
 were analysed by ¹H-NMR spectroscopy.
 
+The data come from the following study:
+
+> Wiklund S, Karlsson M, Antti H, Johnels D, Sjöström M, Wingsle G, Edlund U
+> (2005). A new metabonomic strategy for analysing the growth process of the
+> poplar tree. *Plant Biotechnology Journal* 3(3): 353-362.
+> [doi:10.1111/j.1467-7652.2005.00129.x](https://doi.org/10.1111/j.1467-7652.2005.00129.x)
+
 ### Experimental design
 
 The stem of each tree was divided into **internodes** - the pieces of stem
@@ -316,9 +323,9 @@ r2_values <- pca_result$sdev^2 / sum(pca_result$sdev^2)
 r2_cumulative <- cumsum(r2_values)
 
 data.frame(
-  Component = paste0("PC", 1:7),
-  R2 = round(r2_values[1:7], 3),
-  R2cum = round(r2_cumulative[1:7], 3)
+  Component = paste0("PC", 1:5),
+  R2 = round(r2_values[1:5], 3),
+  R2cum = round(r2_cumulative[1:5], 3)
 )
 ```
 
@@ -328,28 +335,33 @@ r2_values <- pca_result$sdev^2 / sum(pca_result$sdev^2)
 r2_cumulative <- cumsum(r2_values)
 
 data.frame(
-  Component = paste0("PC", 1:7),
-  R2 = round(r2_values[1:7], 3),
-  R2cum = round(r2_cumulative[1:7], 3)
+  Component = paste0("PC", 1:5),
+  R2 = round(r2_values[1:5], 3),
+  R2cum = round(r2_cumulative[1:5], 3)
 )
 ```
 
 ### How many components? R² and Q²
 
 As in the previous tutorials, R² alone cannot tell you where to stop. Let us add
-the cross-validated Q².
+the cross-validated Q². You can modify the variable `nPCs` and click `Run code` 
+to see how many components are "optimal", i.e. when does the Q² decrease or 
+plateaus.
 
 ```{r pca-q2, exercise=TRUE}
 set.seed(2026)
 
+# set the number of principal components to calculate
+nPCs <- 5
+
 # The data are already Pareto-scaled, so we tell pcaMethods not to scale again
-pca_cv <- pcaMethods::pca(X_pareto, method = "svd", nPcs = 7,
+pca_cv <- pcaMethods::pca(X_pareto, method = "svd", nPcs = nPCs,
                           scale = "none", center = FALSE)
 
 data.frame(
   Component = paste0("PC", 1:7),
   R2cum = round(R2cum(pca_cv), 3),
-  Q2cum = round(Q2(pca_cv, X_pareto, fold = 7, verbose = FALSE), 3)
+  Q2cum = round(Q2(pca_cv, X_pareto, fold = nPCs, verbose = FALSE), 3)
 )
 ```
 
