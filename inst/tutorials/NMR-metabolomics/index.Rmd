@@ -237,7 +237,7 @@ quiz(
     answer("Spread evenly over the whole range from -5 to 15 ppm"),
     answer("Only above 10 ppm"),
     answer("Only below 0 ppm"),
-    message = "About 80% of the total variance sits between 2 and 4 ppm (sugars, amino acids, organic acids) and a further 10% between 6 and 8 ppm - the aromatic region, which is where you would expect phenylpropanoids. The 242 buckets outside 0-10 ppm contain almost nothing but noise. You may also have spotted the gap around 4.3-5.2 ppm: that is the water signal, removed before bucketing because it is huge, variable and tells you nothing about the plant."
+    message = "About 80% of the total variance sits between 2 and 4 ppm (sugars, amino acids, organic acids) and a further 10% between 6 and 8 ppm - the aromatic region, which is where you would expect phenylpropanoids. The 242 buckets outside 0-10 ppm contain almost nothing but noise. You may also have spotted the gap around 4.3-5.6 ppm: that is the water signal, removed before bucketing because it is huge, variable and tells you nothing about the plant."
   ),
   question("Why not simply run a t-test per bucket and skip the multivariate analysis?",
     answer("Because t-tests do not work on NMR data"),
@@ -508,37 +508,180 @@ quiz(
 
 ## PCA loadings
 
-With 655 variables a loadings scatter plot is unreadable. For spectral data you
-plot the loadings **against chemical shift**, so the result reads like a
-spectrum: peaks sticking up or down are the buckets driving that component.
+First the familiar view from the IRIS and Food tutorials: a loadings scatter
+plot of PC1 against PC2, with one point per variable. Hover over a point to see
+which bucket it is.
 
-```{r loadings-spectrum, exercise=TRUE, exercise.setup="prep-pca"}
+```{r loadings-scatter, exercise=TRUE, exercise.setup="prep-pca", fig.width=7, fig.height=6}
+loadings_xy <- data.frame(
+  Bucket = colnames(X_pareto),
+  ppm    = ppm,
+  PC1    = pca_result$rotation[, 1],
+  PC2    = pca_result$rotation[, 2]
+)
+
+p <- ggplot(loadings_xy, aes(x = PC1, y = PC2, colour = ppm,
+                             text = paste0("Bucket: ", Bucket, " ppm",
+                                           "<br>PC1: ", round(PC1, 3),
+                                           "<br>PC2: ", round(PC2, 3)))) +
+  geom_hline(yintercept = 0, colour = "grey60") +
+  geom_vline(xintercept = 0, colour = "grey60") +
+  geom_point(size = 1.5, alpha = 0.8) +
+  # colour by chemical shift, so you can see that neighbouring buckets
+  # (often the same metabolite) end up close together
+  scale_colour_viridis_c(name = "ppm") +
+  labs(title = "PCA loadings plot (PC1 vs PC2)",
+       x = "PC1 loading", y = "PC2 loading") +
+  theme_minimal()
+
+ggplotly(p, tooltip = "text")
+```
+
+With 655 variables this plot is hard to read: most buckets pile up around the
+origin, and you have to hover over every point to know which part of the
+spectrum it belongs to. For spectral data you therefore usually plot the
+loadings **against chemical shift**, so the result reads like a spectrum: peaks
+sticking up or down are the buckets driving that component.
+
+```{r loadings-spectrum, exercise=TRUE, exercise.setup="prep-pca", fig.width=7, fig.height=6}
 loadings_df <- data.frame(
+  Bucket = colnames(X_pareto),
   ppm = ppm,
   PC1 = pca_result$rotation[, 1],
   PC2 = pca_result$rotation[, 2]
 ) |>
+  # only 0 - 10 ppm, outside that range there is only noise
+  filter(ppm >= 0, ppm <= 10) |>
   pivot_longer(cols = c(PC1, PC2), names_to = "Component", values_to = "Loading")
 
-ggplot(loadings_df, aes(x = ppm, y = Loading)) +
+p <- ggplot(loadings_df, aes(x = ppm, y = Loading,
+                             # text shown when you hover over a bar
+                             text = paste0("Bucket: ", Bucket, " ppm",
+                                           "<br>Loading: ", round(Loading, 3)))) +
   geom_segment(aes(xend = ppm, yend = 0), linewidth = 0.3) +
   geom_hline(yintercept = 0, colour = "grey60") +
   facet_wrap(~Component, ncol = 1, scales = "free_y") +
-  scale_x_reverse(limits = c(10, 0), breaks = seq(0, 10, by = 1)) +
+  scale_x_reverse(breaks = seq(0, 10, by = 1)) +   # NMR convention: high ppm left
   labs(title = "PCA loadings against chemical shift",
-       subtitle = "PC1 = growth/internode axis, PC2 = genotype axis",
        x = "Chemical shift (ppm)") +
   theme_minimal()
+
+# Interactive: drag a rectangle to zoom in, double-click to zoom out again
+ggplotly(p, tooltip = "text") |>
+  layout(title = list(
+    text = paste0("PCA loadings against chemical shift",
+                  "<br><sup>PC1 = growth/internode axis, PC2 = genotype axis</sup>"),
+    x = 0, xanchor = "left"
+  ))
 ```
 
-```{r top-loadings, exercise=TRUE, exercise.setup="prep-pca"}
-# Which buckets contribute most to the class-separating component, PC2?
-top_pc2 <- sort(abs(pca_result$rotation[, 2]), decreasing = TRUE)[1:10]
+### Variable plot
 
-data.frame(
-  Bucket = names(top_pc2),
-  Loading_PC2 = round(pca_result$rotation[names(top_pc2), 2], 3),
-  Loading_PC1 = round(pca_result$rotation[names(top_pc2), 1], 3)
+A loading tells you that a bucket is important, but not *how* it behaves. For
+that you look at the raw data of the bucket itself. The variable plot shows the 
+value of a bucket for every sample, in the order of the data file (tree A to F, 
+internode 1 to 8 within each tree), with dashed lines at the average and at ±2 
+and ±3 standard deviations.
+
+Fill in one, two or three bucket names in `buckets` (you can find them by
+hovering over the loadings plots above) and press **Run Code**. With more than
+one bucket, each gets its own panel.
+
+```{r variable-plot, exercise=TRUE, fig.width=7, fig.height=7}
+# One, two or three buckets, written exactly as in the loadings plots
+buckets <- c("3.82122")
+
+# ---- checks ---------------------------------------------------------------
+if (length(buckets) < 1 || length(buckets) > 3) {
+  stop("Please give one, two or three buckets.")
+}
+unknown <- setdiff(buckets, colnames(X))
+if (length(unknown) > 0) {
+  stop("Unknown bucket(s): ", paste(unknown, collapse = ", "),
+       ". Use the names shown in the loadings plots, e.g. \"3.82122\".")
+}
+
+# ---- data: one row per sample per bucket, in the order of the data file -----
+var_df <- do.call(rbind, lapply(buckets, function(b) {
+  data.frame(meta, Obs = seq_len(nrow(X)), Bucket = b, Value = X[, b])
+}))
+
+# the average and the 2 and 3 SD limits per bucket, as in SIMCA
+limits <- do.call(rbind, lapply(buckets, function(b) {
+  m <- mean(X[, b])
+  s <- sd(X[, b])
+  data.frame(Bucket = b,
+             y    = c(m, m + 2 * s, m - 2 * s, m + 3 * s, m - 3 * s),
+             Line = c("Average", "2 SD", "2 SD", "3 SD", "3 SD"))
+}))
+
+# show the average and SD in the panel titles
+panel_titles <- sapply(buckets, function(b) {
+  sprintf("%s ppm  (average %.4f, SD %.4f)", b, mean(X[, b]), sd(X[, b]))
+})
+var_df$Bucket <- factor(var_df$Bucket, levels = buckets, labels = panel_titles)
+limits$Bucket <- factor(limits$Bucket, levels = buckets, labels = panel_titles)
+
+p <- ggplot(var_df, aes(x = Obs, y = Value, colour = Class, group = Class,
+                        # text shown when you hover over a sample
+                        text = paste0("Sample: ", Sample,
+                                      "<br>Class: ", Class,
+                                      "<br>Internode: ", Internode,
+                                      "<br>Value: ", signif(Value, 3)))) +
+  geom_hline(data = limits, aes(yintercept = y, linetype = Line),
+             colour = "grey40") +
+  geom_line(linewidth = 0.6) +
+  geom_point(size = 1.2) +
+  facet_wrap(~Bucket, ncol = 1, scales = "free_y") +
+  scale_colour_manual(values = class_colors) +
+  scale_linetype_manual(values = c("Average" = "solid",
+                                   "2 SD"    = "dashed",
+                                   "3 SD"    = "dotted"),
+                        name = NULL) +
+  labs(x = "Sample (A1 ... F7, in the order of the data file)",
+       y = "Intensity") +
+  theme_minimal() +
+  # the meaning of the reference lines is given in the subtitle instead
+  guides(linetype = "none")
+
+# Interactive: hover over a point to see which sample it is
+ggplotly(p, tooltip = "text") |>
+  layout(
+    title = list(
+      text = paste0("Variable plot",
+                    "<br><sup>solid line = average, dashed = 2 SD, dotted = 3 SD</sup>"),
+      x = 0, xanchor = "left"
+    ),
+    margin = list(t = 90),
+    legend = list(orientation = "h", x = 0, y = -0.12)
+  )
+```
+
+### Quiz: PCA loadings
+
+```{r quiz-loadings, echo=FALSE}
+quiz(
+  question("Which buckets do you think are the most important ones for PC1, the separation between the internodes (growth)?",
+    answer("2.45239 and 2.15044, around 2.1 - 2.5 ppm"),
+    answer("The buckets above 10 ppm"),
+    answer("3.82122 and 3.84135, around 3.8 ppm", correct = TRUE),
+    answer("All buckets contribute about equally"),
+    message = "The largest PC1 loadings belong to 3.82122 (0.29) and 3.84135 (0.21), followed by 3.64005 and 3.68031 and, on the opposite side, a group of aromatic buckets around 7.2 - 7.4 ppm. Whether a loading is printed as positive or negative is arbitrary; what matters is its size. Put 3.82122 in the variable plot and hover over the points: in MYB76 its intensity rises from about 0.037 at the top of the plant to about 0.066 at the bottom."
+  ),
+  question("Which buckets do you think are the most important ones for PC2, the separation between the two genotypes?",
+    answer("Only 3.82122 and 3.84135"),
+    answer("The aromatic buckets around 7.2 - 7.4 ppm"),
+    answer("The buckets above 10 ppm"),
+    answer("2.45239, 2.15044, 2.47252 and 2.13031, around 2.1 - 2.5 ppm", correct = TRUE),
+    message = "These four buckets have the largest PC2 loadings (0.26 - 0.29); they are also the variable IDs quoted in the SIMCA answers. 3.82122 and 3.84135 contribute to PC2 as well, but much less (about 0.14), and they mainly carry the growth trend of PC1. Neighbouring buckets such as 2.45239 and 2.47252 usually belong to the same metabolite, which is why they appear together."
+  ),
+  question("Did you observe something strange in the loadings? (Tip: look at the variable plots and hover over the points.)",
+    answer("Yes - the difference between the internodes and between the classes is mainly found in the bottom of the plant; at the top, the samples look alike", correct = TRUE),
+    answer("No - every MYB76 sample has a higher value than every wild type sample"),
+    answer("Yes - the difference between the classes is mainly found at the top of the plant"),
+    answer("Yes - all wild type samples are outliers"),
+    message = "In the variable plots, some MYB76 samples drop to the level of the wild type. Hover over them: they are the youngest internodes at the top of the plant. At the top (internodes 1 - 3) both genotypes are almost the same: 3.82122 is 0.037 in MYB76 against 0.033 in the wild type, and 2.45239 is 0.0032 against 0.0053. Further down the stem the differences open up: at the bottom (internodes 6 - 8) 3.82122 is 0.066 against 0.037, and 2.45239 is 0.0062 against 0.0224. So the genotype effect develops as the tissue gets older, and growth and genotype are entangled. Before you conclude this, it is still worth checking the raw spectra of the odd samples, to rule out a bucketing problem."
+  )
 )
 ```
 
