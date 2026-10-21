@@ -1141,15 +1141,15 @@ kable(data.frame(
 ```{r quiz-comparison, echo=FALSE}
 quiz(
   question("In what way does PLS-DA give you 'better' information than PCA here?",
-    answer("It puts the class difference on the first component, so the most important variables in the model are the class-discriminating ones", correct = TRUE),
     answer("It always has a higher R²"),
     answer("It does not need cross-validation"),
+    answer("It puts the class difference on the first component, so the most important variables in the model are the class-discriminating ones", correct = TRUE),
     answer("It uses more components"),
     message = "In the PCA the genotype difference sat on PC2, behind the growth trend, so the largest loadings belonged to internode-related variables. In PLS-DA the class difference is rotated onto LV1, so the top-VIP variables are the class-discriminating ones. That is what makes biomarker candidates easier to find - and note that the top VIPs here are the same buckets you already spotted on PC2."
   ),
   question("What is the main danger of going straight to PLS-DA without doing the PCA first?",
-    answer("You would never have discovered that growth stage is a bigger source of variation than the genotype", correct = TRUE),
     answer("PLS-DA would not run"),
+    answer("You would never have discovered that growth stage is a bigger source of variation than the genotype", correct = TRUE),
     answer("The Q² would be lower"),
     answer("There is no danger - the PCA is an optional extra"),
     message = "PLS-DA would happily have given you a nice separation and a list of biomarkers, and you would have had no idea that the dominant structure in the data is developmental rather than genetic. That matters for interpretation: several of the top biomarker candidates ALSO change along the stem, so a difference in the mix of internodes between the groups could have produced part of the apparent genotype effect. Always look before you classify."
