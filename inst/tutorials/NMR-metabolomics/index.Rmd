@@ -134,6 +134,13 @@ pathway**, which leads to the formation of S- and G-lignin, flavonoids and
 sinapate esters. Milled poplar samples collected at the internodes of the tree
 were analysed by ¹H-NMR spectroscopy.
 
+The data come from the following study:
+
+> Wiklund S, Karlsson M, Antti H, Johnels D, Sjöström M, Wingsle G, Edlund U
+> (2005). A new metabonomic strategy for analysing the growth process of the
+> poplar tree. *Plant Biotechnology Journal* 3(3): 353-362.
+> [doi:10.1111/j.1467-7652.2005.00129.x](https://doi.org/10.1111/j.1467-7652.2005.00129.x)
+
 ### Experimental design
 
 The stem of each tree was divided into **internodes** - the pieces of stem
