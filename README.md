@@ -10,6 +10,16 @@ The tutorials are bundled in the R package **FOStutorials** (in `inst/tutorials/
 
 ## Installation
 
+### System requirements (Linux)
+
+On Ubuntu (tested on 26.04), install the following system packages before installing the R package:
+
+```bash
+sudo apt install libgl1-mesa-dev libglu1-mesa-dev pandoc texlive
+```
+
+### Install from GitHub
+
 Install the package from GitHub. Some dependencies come from Bioconductor (`pcaMethods`, `mixOmics`, `ComplexHeatmap`); `pak` installs these automatically:
 
 ```r
