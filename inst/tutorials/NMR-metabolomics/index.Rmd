@@ -170,6 +170,11 @@ Six 12-week-old trees were used:
 
 ## The Data
 
+We'll first create an overview of the data:
+
+* how many samples are collected for each tree
+* how many samples per class
+
 ```{r explore-data, exercise=TRUE}
 # Sample layout: which internodes were collected from which tree?
 table(meta$Tree, meta$Internode)
@@ -183,21 +188,20 @@ cat("Bucket width:", round(median(abs(diff(ppm))), 4), "ppm\n")
 cat("Shift range: ", max(ppm), "down to", min(ppm), "ppm\n")
 ```
 
-Two things are worth noting about the layout above:
+One thing is worth noting about the layout above:
 
 - Tree **D** is missing internodes 6 and 7, and tree **F** is missing internode 8.
   That is why there are 45 samples and not 6 x 8 = 48. Missing samples are
   normal in a real experiment, and neither PCA nor PLS-DA requires a balanced
   design.
-- The printed handout describes 57 observations including analytical replicates.
-  The file you are working with here contains the 45 plant samples without those
-  replicates, so your numbers will differ slightly from the printed answers.
 
 ### What does an NMR spectrum look like?
 
 Each of the 655 variables is a small slice ("bucket") of the NMR spectrum, and
 each bucket holds the integrated signal in that slice. Plotting a row of the
-data matrix against the chemical shift gives you back the spectrum:
+data matrix against the chemical shift gives you back the spectrum. The plot is
+interactive: drag a rectangle to zoom in on a region, hover over the line to
+read off the chemical shift, and double-click to zoom out again.
 
 ```{r mean-spectrum, exercise=TRUE}
 spectrum_df <- data.frame(
@@ -208,14 +212,22 @@ spectrum_df <- data.frame(
   pivot_longer(cols = c(WildType, MYB76),
                names_to = "Class", values_to = "Intensity")
 
-ggplot(spectrum_df, aes(x = ppm, y = Intensity, colour = Class)) +
+p <- ggplot(spectrum_df, aes(x = ppm, y = Intensity, colour = Class,
+                             group = Class,
+                             # text shown when you hover over the spectrum
+                             text = paste0(Class,
+                                           "<br>ppm: ", round(ppm, 3),
+                                           "<br>Intensity: ", signif(Intensity, 3)))) +
   geom_line(linewidth = 0.4) +
   scale_x_reverse(breaks = seq(-4, 14, by = 2)) +   # NMR convention: high ppm left
   scale_colour_manual(values = class_colors) +
   labs(title = "Mean NMR spectrum per class",
        x = "Chemical shift (ppm)", y = "Intensity") +
-  theme_minimal() +
-  theme(legend.position = "bottom")
+  theme_minimal()
+
+# Interactive: drag a rectangle to zoom in, double-click to zoom out again
+ggplotly(p, tooltip = "text") |>
+  layout(legend = list(orientation = "h", x = 0, y = -0.2))
 ```
 
 ```{r quiz-data, echo=FALSE}
@@ -228,9 +240,9 @@ quiz(
     message = "About 80% of the total variance sits between 2 and 4 ppm (sugars, amino acids, organic acids) and a further 10% between 6 and 8 ppm - the aromatic region, which is where you would expect phenylpropanoids. The 242 buckets outside 0-10 ppm contain almost nothing but noise. You may also have spotted the gap around 4.3-5.2 ppm: that is the water signal, removed before bucketing because it is huge, variable and tells you nothing about the plant."
   ),
   question("Why not simply run a t-test per bucket and skip the multivariate analysis?",
-    answer("You could, but 655 tests need a heavy multiple-testing correction and you would lose all information about which buckets vary together", correct = TRUE),
     answer("Because t-tests do not work on NMR data"),
     answer("Because there are more samples than variables"),
+    answer("You could, but 655 tests need a heavy multiple-testing correction and you would lose all information about which buckets vary together", correct = TRUE),
     answer("Because the data are not normally distributed"),
     message = "You can absolutely do that, and it is a sensible cross-check. But 655 tests need a correction - Bonferroni would put the threshold at 0.05/655 = 0.000076 - and a single metabolite usually produces SEVERAL peaks across the spectrum. Univariate testing treats those peaks as unrelated findings, whereas PCA and PLS-DA see immediately that they move together."
   )
