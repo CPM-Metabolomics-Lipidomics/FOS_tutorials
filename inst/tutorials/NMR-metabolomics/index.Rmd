@@ -359,20 +359,27 @@ pca_cv <- pcaMethods::pca(X_pareto, method = "svd", nPcs = nPCs,
                           scale = "none", center = FALSE)
 
 data.frame(
-  Component = paste0("PC", 1:7),
+  Component = paste0("PC", 1:nPCs),
   R2cum = round(R2cum(pca_cv), 3),
-  Q2cum = round(Q2(pca_cv, X_pareto, fold = nPCs, verbose = FALSE), 3)
+  Q2cum = round(Q2(pca_cv, X_pareto, fold = 7, verbose = FALSE), 3)
 )
 ```
 
 ```{r quiz-pca-quality, echo=FALSE}
 quiz(
-  question("Seven components give R²cum = 0.86 and Q²cum = 0.70. How would you describe this model?",
-    answer("It is overfitted, because 7 components is too many"),
+  question("What is the optimal number of components for this model?",
+    answer("3"),
+    answer("4"),
+    answer("7", correct = TRUE),
+    answer("10"),
+    message = "Q²cum keeps rising all the way up to PC7 (0.682). It never decreases, so every extra component still improves the prediction of left-out samples. The gain after PC4 is small, but it does not stop."
+  ),
+  question("How would you describe this model?",
+    answer("It is overfitted"),
     answer("It describes most of the data and also predicts it well: a solid overview model", correct = TRUE),
     answer("It is useless, because R² is below 1"),
     answer("It cannot be judged without the class labels"),
-    message = "R²cum = 0.86 means 86% of the (Pareto-scaled) data is described, and Q²cum = 0.70 means the model still predicts left-out samples well. In metabolomics a Q² around 0.5 is already considered good. Note also that Q² is still rising at component 7, so the model has not yet started fitting noise."
+    message = "R²cum = 0.86 means 86% of the (Pareto-scaled) data is described, and Q²cum = 0.68 means the model still predicts left-out samples well. In metabolomics a Q² around 0.5 is already considered good. Note also that Q² is slightly decreasing after PC7 and later even increases slightly again."
   ),
   question("PC1 alone explains 35% of the variance. Does that mean PC1 is the difference between the two genotypes?",
     answer("Not necessarily - PCA is unsupervised and knows nothing about the classes", correct = TRUE),

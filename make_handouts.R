@@ -165,6 +165,12 @@ convert <- function(rmd_path) {
   }
   new_body <- out
 
+  # ---- relative image paths -> absolute ----
+  # LaTeX runs in the output directory, where images/... does not exist
+  tut_dir  <- dirname(normalizePath(rmd_path))
+  new_body <- gsub("(!\\[[^]]*\\]\\()(?!https?:|/)", paste0("\\1", tut_dir, "/"),
+                   new_body, perl = TRUE)
+
   # ---- new front matter ----
   yaml_head <- c(
     "---",
