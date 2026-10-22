@@ -206,11 +206,16 @@ One thing is worth noting about the layout above:
 
 ### What does an NMR spectrum look like?
 
-Each of the 655 variables is a small slice ("bucket") of the NMR spectrum, and
-each bucket holds the integrated signal in that slice. Plotting a row of the
-data matrix against the chemical shift gives you back the spectrum. The plot is
-interactive: drag a rectangle to zoom in on a region, hover over the line to
-read off the chemical shift, and double-click to zoom out again.
+Below you can see 2 examples of the raw NMR spectra.
+
+![Examples of poplar high-resolution, proton nuclear magnetic resonance (1H NMR) spectra: (a) transgenic plant; (b) wild-type plant. Both sampled at internode 1.](images/pbi_129_f7.png)
+
+After processing and bucketing 655 buckets/variables are left. Each of the 655 
+buckets/variables is a small slice of the NMR spectrum, and each bucket holds 
+the integrated signal in that slice. Plotting a row of the data matrix against 
+the chemical shift gives you back the spectrum. The plot is interactive: drag 
+a rectangle to zoom in on a region, hover over the line to read off the 
+chemical shift, and double-click to zoom out again.
 
 ```{r mean-spectrum, exercise=TRUE}
 spectrum_df <- data.frame(
