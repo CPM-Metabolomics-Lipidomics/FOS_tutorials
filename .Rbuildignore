@@ -12,3 +12,5 @@
 ^inst/tutorials/[^/]+/.*\.html$
 ^inst/tutorials/[^/]+/.*_files$
 ^\.github$
+^deploy_shinyapps\.R$
+^shinyapps$

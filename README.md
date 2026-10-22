@@ -43,6 +43,32 @@ run_fos_tutorial("NMR-metabolomics")
 
 The tutorials can also be started with `learnr::run_tutorial("Iris-dataset", package = "FOStutorials")`, or from the *Tutorial* pane in RStudio.
 
+# shinyapps.io
+
+The three tutorials can be deployed together as **one app** on [shinyapps.io](https://www.shinyapps.io): https://cpm-lumc.shinyapps.io/fos-tutorials/
+
+shinyapps.io serves only one learnr tutorial per app, so `deploy_shinyapps.R` merges the three tutorials into a single one (*Iris*, *Food* and *NMR* topics in the left-hand menu). The merged tutorial is generated in `shinyapps/` every time you deploy; always edit the tutorials in `inst/tutorials/`, never the generated file.
+
+## Deploy
+
+From the root of this repository:
+
+```bash
+Rscript deploy_shinyapps.R
+```
+
+This builds and pre-renders the merged tutorial and uploads it; shinyapps.io then installs the same package versions (including the Bioconductor ones) as on your computer. The deployment record is written to `shinyapps/rsconnect/`; commit it, so a deployment from another computer updates the same app instead of creating a new one.
+
+To try the merged tutorial locally first, only build it and run it:
+
+```bash
+Rscript deploy_shinyapps.R build
+```
+
+```r
+learnr::run_tutorial("shinyapps")
+```
+
 # Docker
 
 To build the Docker container run:
