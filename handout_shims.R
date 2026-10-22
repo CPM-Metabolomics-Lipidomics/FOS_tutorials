@@ -61,7 +61,7 @@ quiz <- function(..., caption = NULL) {
 
 # --- interactive widgets ---------------------------------------------------
 # DT::datatable and plotly do not render in PDF, so fall back to a plain table
-# and to the underlying ggplot object.
+# and to the underlying ggplot object(s).
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
 
@@ -73,14 +73,46 @@ datatable <- function(data, ..., caption = NULL) {
 
 ggplotly <- function(p, ...) p
 
+# plotly::subplot() puts several (ggplotly'd, so here plain ggplot) plots side
+# by side. Arrange them with ggpubr instead, and keep the panels so layout()
+# can rebuild the figure with panel titles.
+subplot <- function(..., nrows = 1) {
+  plots <- Filter(function(x) inherits(x, "ggplot"), list(...))
+  p <- ggpubr::ggarrange(plotlist = plots, nrow = nrows,
+                         common.legend = FALSE, legend = "bottom")
+  attr(p, "handout_panels") <- list(plots = plots, nrows = nrows)
+  p
+}
+
 # plotly::layout() is sometimes piped onto ggplotly() to set a title/subtitle.
 # Translate that back into ggplot labels instead of failing.
 layout <- function(p, ...) {
   if (!inherits(p, "ggplot")) return(p)
-  ttl <- list(...)$title
+  args <- list(...)
+  ttl <- args$title
   txt <- if (is.list(ttl)) ttl$text else if (is.character(ttl)) ttl else NULL
+  strip <- function(s) trimws(gsub("<[^>]*>", "", s))
+
+  # a subplot(): annotations become panel titles, the title goes on top
+  panels <- attr(p, "handout_panels")
+  if (!is.null(panels)) {
+    plots <- panels$plots
+    ann <- vapply(args$annotations %||% list(),
+                  function(a) strip(a$text %||% ""), character(1))
+    if (length(ann) == length(plots)) {
+      plots <- Map(function(q, t) q + ggplot2::labs(title = t), plots, ann)
+    }
+    p <- ggpubr::ggarrange(plotlist = plots, nrow = panels$nrows,
+                           common.legend = FALSE, legend = "bottom")
+    if (!is.null(txt)) {
+      p <- ggpubr::annotate_figure(
+        p, top = ggpubr::text_grob(strip(txt), face = "bold", x = 0, hjust = 0)
+      )
+    }
+    return(p)
+  }
+
   if (!is.null(txt)) {
-    strip <- function(s) trimws(gsub("<[^>]*>", "", s))
     parts <- strsplit(txt, "<br>", fixed = TRUE)[[1]]
     p <- p + ggplot2::labs(
       title    = strip(parts[1]),
