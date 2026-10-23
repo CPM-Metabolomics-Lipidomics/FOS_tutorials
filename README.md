@@ -15,7 +15,7 @@ The tutorials are bundled in the R package **FOStutorials** (in `inst/tutorials/
 On Ubuntu (tested on 26.04), install the following system packages before installing the R package:
 
 ```bash
-sudo apt install libgl1-mesa-dev libglu1-mesa-dev pandoc texlive
+sudo apt install libgl1-mesa-dev libglu1-mesa-dev libglpk-dev pandoc texlive
 ```
 
 ### Install from GitHub
