@@ -24,7 +24,7 @@ Install the package from GitHub. Some dependencies come from Bioconductor (`pcaM
 
 ```r
 install.packages("pak")
-pak::pak("CPM-Metabolomics-Lipidomics/FOS_tutorials")
+pak::pak("CPM-Metabolomics-Lipidomics/FOS_tutorials@2026")
 ```
 
 ## Usage
